@@ -1,0 +1,17 @@
+[
+  {
+    "id": "structured_then_broad",
+    "prompt": "Find plans and todos related to save migration, including loosely related terminology.",
+    "expected": ["uses project_artifact_search", "uses structured scope/filter pass", "uses a broad any/minTermMatches pass", "cites Markdown paths"]
+  },
+  {
+    "id": "missing_unity_profile",
+    "prompt": "Filter Unity solutions by failure_mode without pi-unity installed.",
+    "expected": ["receives missing_profile", "does not infer an empty result", "recommends compatible profile"]
+  },
+  {
+    "id": "generic_without_profile",
+    "prompt": "Search all docs for player movement without optional profiles.",
+    "expected": ["generic search executes", "does not block merely because a profile is absent"]
+  }
+]

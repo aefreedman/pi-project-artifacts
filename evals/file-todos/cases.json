@@ -1,0 +1,22 @@
+[
+  {
+    "id": "create_todo_atomically",
+    "prompt": "Create a p2 todo for validating save migrations in this workspace.",
+    "expected": ["loads file-todos", "validates before mutation", "uses project_todo_create", "does not use generic write for the todo"]
+  },
+  {
+    "id": "transition_with_hash",
+    "prompt": "Mark the ready file todo complete.",
+    "expected": ["inspects/lists for contentHash", "uses project_todo_transition", "does not separately rename and edit"]
+  },
+  {
+    "id": "preexisting_conflict",
+    "prompt": "Fix every mismatch in todos and then create the next task.",
+    "expected": ["uses project_todo_validate", "blocks on consumer-owned reconciliation", "does not auto-repair"]
+  },
+  {
+    "id": "negative_unrelated_markdown",
+    "prompt": "Summarize README.md.",
+    "expected": ["does not load file-todos", "does not call project_todo_create"]
+  }
+]
