@@ -19,7 +19,7 @@
     "./core": { "types": "./dist/core/index.d.ts", "import": "./dist/core/index.js" },
     "./pi": { "types": "./dist/pi/index.d.ts", "import": "./dist/pi/index.js" }
   },
-  "files": ["dist", "src", "skills", "references", "evals", "compatibility", "CHANGELOG.md", "LICENSE", "README.md"],
+  "files": ["dist", "src", "skills", "evals", "CHANGELOG.md", "LICENSE", "README.md"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test tests/*.test.mjs",

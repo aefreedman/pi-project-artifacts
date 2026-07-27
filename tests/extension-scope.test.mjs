@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import registerProjectArtifacts from "../dist/pi/index.js";
-import { createCapabilityRegistry } from "@aefree/pi-capability-registry";
 import {
   ARTIFACT_PROFILE_REGISTRY_KEY_V1,
   ARTIFACT_SEARCH_SERVICE_REGISTRY_KEY_V1,
@@ -51,11 +50,8 @@ const profile = (id, field, seen = []) => ({
   },
 });
 
-const LEGACY_REFERENCE_REGISTRY_KEY = "@aefree/pi-game-dev/legacy-reference-services/v1";
-const legacyRegistry = () => createCapabilityRegistry({ registryKey: LEGACY_REFERENCE_REGISTRY_KEY, contractVersion: 1, compatibleVersions: [1], validate(value) { if (!value || typeof value !== "object") throw new TypeError("invalid fixture service"); } });
-
 function reset() {
-  for (const key of [ARTIFACT_PROFILE_REGISTRY_KEY_V1, ARTIFACT_SEARCH_SERVICE_REGISTRY_KEY_V1, TODO_LIFECYCLE_SERVICE_REGISTRY_KEY_V1, LEGACY_REFERENCE_REGISTRY_KEY]) {
+  for (const key of [ARTIFACT_PROFILE_REGISTRY_KEY_V1, ARTIFACT_SEARCH_SERVICE_REGISTRY_KEY_V1, TODO_LIFECYCLE_SERVICE_REGISTRY_KEY_V1]) {
     delete globalThis[Symbol.for(key)];
   }
 }
@@ -135,27 +131,6 @@ test("separate adapter instances keep profile snapshots isolated by session scop
     await assert.rejects(search(piA, scopeA, root, { filters: { scope_b: "yes" } }), (error) => error.code === "missing_profile");
     assert.equal(JSON.stringify(resultA).includes("scope-a-private"), false);
     assert.equal(JSON.stringify(resultB).includes("scope-b-private"), false);
-  } finally { await rm(root, { recursive: true, force: true }); }
-});
-
-test("legacy reference registration is exact, bounded, public, and scope-owned", async () => {
-  const root = await workspace();
-  try {
-    const scope = {};
-    const pi = new FakePi();
-    registerProjectArtifacts(pi);
-    await pi.emit("session_start", context(scope, root));
-    const services = legacyRegistry().snapshotCompatible(scope);
-    assert.equal(services.length, 1);
-    assert.equal(services[0].owner.packageName, "@aefree/pi-project-artifacts");
-    assert.equal(services[0].legacyPaths.length, 11);
-    const signal = new AbortController().signal;
-    const result = await services[0].read({ cwd: root, signal }, { legacyPath: "skills/file-todos/SKILL.md", offset: 1, limit: 2, signal });
-    assert.equal(result.provenance.packageName, "@aefree/pi-project-artifacts");
-    assert.equal(JSON.stringify(result).includes(services[0].owner.packageRoot), false);
-    await assert.rejects(services[0].read({ cwd: root, signal }, { legacyPath: "src/private.ts", signal }), /legacy_resource_unmapped/);
-    await pi.emit("session_shutdown", context(scope, root));
-    assert.equal(legacyRegistry().snapshotCompatible(scope).length, 0);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

@@ -8,5 +8,4 @@ export * from "./artifact-search.js";
 export * from "./todo-lifecycle.js";
 export * from "./services.js";
 export * from "./execution-context.js";
-export * from "./legacy-reference.js";
 //# sourceMappingURL=index.js.map

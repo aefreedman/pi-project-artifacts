@@ -56,5 +56,3 @@ Load only when needed, relative to this skill directory:
 - [references/dependencies.md](references/dependencies.md)
 - [references/work-logs.md](references/work-logs.md)
 - [references/integration.md](references/integration.md)
-
-The legacy shell command reference remains packaged for compatibility mapping, but canonical workflows use tools instead.

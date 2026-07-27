@@ -9,8 +9,7 @@
 - Artifact-profile composition with indexed provider provenance, validator execution, independent profile-defined fields, generic no-profile search, and explicit `missing_profile` filter blocking.
 - Deterministic `project_todo_validate`, `project_todo_list`, `project_todo_inspect`, `project_todo_allocate`, `project_todo_create`, and `project_todo_transition` adapters over `TodoLifecycleServiceV1`.
 - Locked/hash-guarded file-todo allocation, staging, exclusive target creation, physical containment, normalized collision checks, external-edit detection, rollback, and non-mutating pre-existing conflict diagnostics.
-- Preserved `file-todos` skill rewritten as a thin canonical-tool workflow with skill-relative assets and compatibility resources.
-- Exact 11-row `LegacyReferenceServiceV1` registration for pi-game-dev compatibility reads with byte-exact pinned 0.6.4 payload copies, bounded content, and public provenance.
+- `file-todos` skill as a thin canonical-tool workflow with skill-relative assets.
 - Artifact/todo characterization, failure-injection, root-isolation, malformed-input, ordering, lock, atomicity, path, collision, Pi registration, and behavioral-eval fixtures.
 
 ### Changed
@@ -20,12 +19,12 @@
 - Hardened owned interprocess locks with nonce-qualified quarantine reclamation and release ownership verification.
 - Revalidated nearest physical ancestry immediately before index, lock, stage, journal, and todo mutation I/O.
 - Bound artifact and todo service invocations to the session-approved physical `ctx.cwd`, preserving nested child workspaces while rejecting parent, sibling, external absolute-root, and symlink/junction escapes before lock/read/write activity.
-- Kept the approved cwd and registry scope in the package-copy-safe private execution binding so compatibility facades enforce the same boundary without adding scope fields to public contracts.
+- Kept the approved cwd and registry scope in the package-copy-safe private execution binding without adding scope fields to public contracts.
 - Co-install the capability-registry tarball instead of recursively bundling decomposition repositories.
 
-### Fixed
+### Removed
 
-- Exported a package-copy-safe invocation-scope bridge so compatibility facades resolve the same artifact profiles as the canonical adapter.
+- Retired pi-game-dev legacy-reference registration, its pinned compatibility payloads, and retired Compound Game Dev slash-command aliases. Use the canonical project artifact and file-todo tools instead.
 
 ### Safety
 

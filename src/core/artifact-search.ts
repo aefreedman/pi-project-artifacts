@@ -83,7 +83,6 @@ export function buildProvenance(
     schema: "@aefree/pi-project-artifacts/execution-provenance",
     version: 1,
     canonical: Object.freeze({ serviceId: ARTIFACT_SEARCH_SERVICE_ID, packageName: ARTIFACTS_PACKAGE_NAME, packageVersion: ARTIFACTS_PACKAGE_VERSION, contractVersion: 1 }),
-    ...(request.compatibility === undefined ? {} : { compatibility: request.compatibility }),
     profiles: Object.freeze(profileRows),
     fallbacks: Object.freeze(fallbacks),
     executionGate: resolution.outcome === "duplicate" ? "blocked" : "executed",

@@ -17,7 +17,6 @@ import { createArtifactSearchServiceV1, createTodoLifecycleServiceV1 } from "../
 import { bindArtifactExecutionScopeV1 } from "../core/execution-context.js";
 import { trackArtifactToolResult } from "../core/artifact-index.js";
 import { ProjectArtifactError } from "../core/errors.js";
-import { registerProjectArtifactLegacyReferencesV1 } from "../core/legacy-reference.js";
 
 const STRING_OR_ARRAY = Type.Union([Type.String(), Type.Array(Type.String())]);
 const FILTER_VALUES = Type.Union([Type.String(), Type.Array(Type.String())]);
@@ -58,7 +57,6 @@ export default function registerProjectArtifacts(pi: ExtensionAPI): void {
   const todoRegistry = createTodoLifecycleServiceRegistryV1();
   let searchToken: RegistrationToken | undefined;
   let todoToken: RegistrationToken | undefined;
-  let legacyReferences: Readonly<{ token: RegistrationToken; unregister(): boolean }> | undefined;
   let activeScope: object | undefined;
 
   pi.on("session_start", (_event, ctx) => {
@@ -66,11 +64,9 @@ export default function registerProjectArtifacts(pi: ExtensionAPI): void {
     // itself never closes over the old scope.
     if (searchToken) searchRegistry.unregister(searchToken);
     if (todoToken) todoRegistry.unregister(todoToken);
-    legacyReferences?.unregister();
     const scope = ctx.sessionManager;
     searchToken = searchRegistry.register(scope, createArtifactSearchServiceV1());
     todoToken = todoRegistry.register(scope, createTodoLifecycleServiceV1());
-    legacyReferences = registerProjectArtifactLegacyReferencesV1(scope);
     activeScope = scope;
     pi.events.emit("pi-project-artifacts:services-changed", { scope, contractVersion: 1, action: "registered" });
   });
@@ -80,12 +76,10 @@ export default function registerProjectArtifacts(pi: ExtensionAPI): void {
     if (activeScope !== ctx.sessionManager) return;
     const searchChanged = searchRegistry.unregister(searchToken);
     const todoChanged = todoRegistry.unregister(todoToken);
-    const legacyChanged = legacyReferences?.unregister() ?? false;
     searchToken = undefined;
     todoToken = undefined;
-    legacyReferences = undefined;
     activeScope = undefined;
-    if (searchChanged || todoChanged || legacyChanged) pi.events.emit("pi-project-artifacts:services-changed", { scope: ctx.sessionManager, contractVersion: 1, action: "unregistered" });
+    if (searchChanged || todoChanged) pi.events.emit("pi-project-artifacts:services-changed", { scope: ctx.sessionManager, contractVersion: 1, action: "unregistered" });
   });
   pi.on("tool_result", (event, ctx) => { trackArtifactToolResult(event, path.resolve(ctx.cwd)); });
 

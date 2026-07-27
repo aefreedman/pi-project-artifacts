@@ -6,13 +6,13 @@ Canonical project-local Markdown artifact search and deterministic file-todo lif
 
 - tool: `project_artifact_search`
 - tools: `project_todo_validate`, `project_todo_list`, `project_todo_inspect`, `project_todo_allocate`, `project_todo_create`, `project_todo_transition`
-- skill: `file-todos` (compatibility name preserved)
+- skill: `file-todos`
 
-The package registers `ArtifactSearchServiceV1` and `TodoLifecycleServiceV1` per Pi session. It also advertises exactly its 11 public compatibility resources through pi-game-dev's `LegacyReferenceServiceV1`; those resources are served from byte-exact pinned 0.6.4 legacy payload copies, and bounded read results contain public package/resource provenance without exposing the install root. It owns the side-effect-free artifact profile/service contracts under `@aefree/pi-project-artifacts/contracts/v1`; providers such as `pi-unity` register through those contracts in either load order.
+The package registers `ArtifactSearchServiceV1` and `TodoLifecycleServiceV1` per Pi session. It owns the side-effect-free artifact profile/service contracts under `@aefree/pi-project-artifacts/contracts/v1`; providers such as `pi-unity` register through those contracts in either load order.
 
 ## Artifact indexes
 
-Authoritative data remains project Markdown under resolved docs/todos roots. Every artifact and todo invocation is privately bound to the session's physical `ctx.cwd`: the selected workspace and custom docs/todos roots must resolve to that directory or a physical descendant. Parent, sibling, home, and symlink/junction escapes fail before lock acquisition or artifact/todo reads and writes. Nested child repositories remain supported when a coordination workspace is the session cwd. Compatibility facades receive the same bound execution context without exposing session scope or the approved root as public contract fields.
+Authoritative data remains project Markdown under resolved docs/todos roots. Every artifact and todo invocation is privately bound to the session's physical `ctx.cwd`: the selected workspace and custom docs/todos roots must resolve to that directory or a physical descendant. Parent, sibling, home, and symlink/junction escapes fail before lock acquisition or artifact/todo reads and writes. Nested child repositories remain supported when a coordination workspace is the session cwd.
 
 Derived indexes use:
 

@@ -13,10 +13,6 @@ test("package exposes one canonical Pi extension, one preserved skill, and side-
   assert.equal(manifest.bundledDependencies, undefined, "the shared kernel is co-installed instead of copied into nested provider tarballs");
   assert.equal(JSON.stringify(manifest).includes("file:../"), false);
   for (const resource of [
-    "references/_shared/artifact-path-contract.md",
-    "references/_shared/artifact-root-resolution.md",
-    "references/_shared/protected-artifacts.md",
-    "references/cg-groom-docs/guidance.md",
     "skills/file-todos/SKILL.md",
     "skills/file-todos/assets/todo-template.md",
     "skills/file-todos/references/commands.md",
@@ -24,7 +20,7 @@ test("package exposes one canonical Pi extension, one preserved skill, and side-
     "skills/file-todos/references/integration.md",
     "skills/file-todos/references/triage.md",
     "skills/file-todos/references/work-logs.md",
-  ]) assert(existsSync(new URL(`../${resource}`, import.meta.url)), `Missing exact compatibility-map resource: ${resource}`);
+  ]) assert(existsSync(new URL(`../${resource}`, import.meta.url)), `Missing packaged file-todos resource: ${resource}`);
   assert.deepEqual(Object.keys(manifest.exports).sort(), [".", "./contracts", "./contracts/v1", "./contracts/v1/conformance", "./core", "./pi"]);
 });
 

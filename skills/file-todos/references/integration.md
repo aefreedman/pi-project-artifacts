@@ -2,8 +2,8 @@
 
 | Trigger | Flow | Tool |
 |---------|------|------|
-| Code review | /cg-review -> findings -> /cg-triage -> todos | Review agent + skill |
-| Review follow-up | /cg-review-resolve -> triage -> fixes -> todos | Prompt + skill |
-| Code TODOs | /cg-resolve-todo-parallel -> fixes + complex todos | Agent + skill |
-| Planning | /cg-plan -> create todo if needed -> /cg-work -> complete | Prompt + skill |
-| Feedback | Discussion -> create todo -> triage -> work | Skill + slash |
+| Code review | Review findings → validate/list todos → create follow-up todos | Review workflow + `project_todo_*` tools |
+| Review follow-up | Inspect/triage todos → make fixes → transition completed work | `project_todo_*` tools |
+| Code TODOs | Inspect/triage todos → implement work → transition status | `project_todo_*` tools |
+| Planning | Plan work → create a todo when needed → transition it when complete | `project_todo_*` tools |
+| Feedback | Discuss → create a todo → triage → implement → transition status | `project_todo_*` tools |

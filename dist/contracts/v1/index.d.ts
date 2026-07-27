@@ -13,12 +13,6 @@ export interface ArtifactExecutionContextV1 {
     /** Invocation-owned cancellation. A fresh signal is required for every service call. */
     readonly signal: AbortSignal;
 }
-export interface CompatibilityInvocationV1 {
-    readonly contractVersion: 1;
-    readonly surface: string;
-    readonly ownerPackage: string;
-    readonly ownerVersion?: string;
-}
 export interface ArtifactExecutionProvenanceV1 {
     readonly schema: "@aefree/pi-project-artifacts/execution-provenance";
     readonly version: 1;
@@ -28,7 +22,6 @@ export interface ArtifactExecutionProvenanceV1 {
         readonly packageVersion: string;
         readonly contractVersion: 1;
     };
-    readonly compatibility?: CompatibilityInvocationV1;
     readonly profiles: readonly {
         readonly profileId: string;
         readonly packageName: string;
@@ -43,7 +36,6 @@ export interface ArtifactExecutionProvenanceV1 {
     }[];
     readonly executionGate: "executed" | "blocked";
 }
-export type CompatibilityExecutionProvenanceV1 = ArtifactExecutionProvenanceV1;
 export type ArtifactFieldTypeV1 = "string" | "string_list" | "integer" | "boolean" | "date";
 export interface ArtifactFieldDefinitionV1 {
     readonly name: string;
@@ -123,7 +115,6 @@ export interface ArtifactSearchRequestV1 {
     readonly outputMode?: "compact" | "detailed";
     readonly explain?: boolean;
     readonly rebuild?: boolean;
-    readonly compatibility?: CompatibilityInvocationV1;
 }
 export interface ArtifactSearchResultV1 {
     readonly text: string;
