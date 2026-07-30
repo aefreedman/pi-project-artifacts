@@ -14,6 +14,8 @@
 
 ### Changed
 
+- Updated the Pi development baseline to 0.83.0.
+
 - Expanded the Wave 0 side-effect-free v1 artifact/todo contracts into the independently installable canonical Pi package without changing their frozen request/result shapes.
 - Made todo status transitions crash-resumable through durable hash-bound journals and deterministic locked recovery.
 - Hardened owned interprocess locks with nonce-qualified quarantine reclamation and release ownership verification.
