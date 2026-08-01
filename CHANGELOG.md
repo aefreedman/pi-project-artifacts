@@ -10,6 +10,7 @@
 - Deterministic `project_todo_validate`, `project_todo_list`, `project_todo_inspect`, `project_todo_allocate`, `project_todo_create`, and `project_todo_transition` adapters over `TodoLifecycleServiceV1`.
 - Locked/hash-guarded file-todo allocation, staging, exclusive target creation, physical containment, normalized collision checks, external-edit detection, rollback, and non-mutating pre-existing conflict diagnostics.
 - `file-todos` skill as a thin canonical-tool workflow with skill-relative assets.
+- `grooming-project-artifacts` skill for evidence-backed documentation and todo cleanup with explicit mutation authority and owning-migrator boundaries.
 - Artifact/todo characterization, failure-injection, root-isolation, malformed-input, ordering, lock, atomicity, path, collision, Pi registration, and behavioral-eval fixtures.
 
 ### Changed

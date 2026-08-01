@@ -5,7 +5,7 @@ import test from "node:test";
 
 const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
-test("package exposes one canonical Pi extension, one preserved skill, and side-effect-free contracts/core", () => {
+test("package exposes one canonical Pi extension, two package-owned skills, and side-effect-free contracts/core", () => {
   assert.deepEqual(manifest.pi.extensions, ["./dist/pi/index.js"]);
   assert.deepEqual(manifest.pi.skills, ["./skills"]);
   assert.equal(manifest.sideEffects, false);
@@ -13,6 +13,7 @@ test("package exposes one canonical Pi extension, one preserved skill, and side-
   assert.equal(manifest.bundledDependencies, undefined, "the shared kernel is co-installed instead of copied into nested provider tarballs");
   assert.equal(JSON.stringify(manifest).includes("file:../"), false);
   for (const resource of [
+    "skills/grooming-project-artifacts/SKILL.md",
     "skills/file-todos/SKILL.md",
     "skills/file-todos/assets/todo-template.md",
     "skills/file-todos/references/commands.md",
@@ -20,7 +21,7 @@ test("package exposes one canonical Pi extension, one preserved skill, and side-
     "skills/file-todos/references/integration.md",
     "skills/file-todos/references/triage.md",
     "skills/file-todos/references/work-logs.md",
-  ]) assert(existsSync(new URL(`../${resource}`, import.meta.url)), `Missing packaged file-todos resource: ${resource}`);
+  ]) assert(existsSync(new URL(`../${resource}`, import.meta.url)), `Missing packaged skill resource: ${resource}`);
   assert.deepEqual(Object.keys(manifest.exports).sort(), [".", "./contracts", "./contracts/v1", "./contracts/v1/conformance", "./core", "./pi"]);
 });
 
