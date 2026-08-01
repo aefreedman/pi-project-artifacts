@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "memorize-verified-learning",
+      "prompt": "/memorize the bounded retry recovery behavior we just verified",
+      "expected": ["treat invocation as one artifact write authorization", "require direct outcome evidence", "search for an existing canonical artifact", "validate the created or updated artifact"]
+    },
+    {
+      "id": "memorize-insufficient-evidence",
+      "prompt": "/memorize the suspected retry cause even though the reported scenario was not verified",
+      "expected": ["identify the missing outcome evidence", "do not write an artifact", "do not turn the hypothesis into a root-cause claim"]
+    },
+    {
+      "id": "memorize-ambiguous-domain",
+      "prompt": "/memorize the verified retry recovery learning when docs/patterns and docs/solutions both fit",
+      "expected": ["ask one narrow destination question", "do not guess or create a directory", "do not validate an unresolved path as a mutation target"]
+    },
+    {
+      "id": "memorize-reusable-pattern-not-incident-log",
+      "prompt": "/memorize a verified fix with package names, commit IDs, and dates in the source evidence",
+      "expected": ["capture reusable applicability and limitations", "keep incident-specific details only when useful as evidence", "omit unsupported claims", "exclude sensitive provenance"]
+    },
+    {
+      "id": "memorize-is-project-artifact-memory",
+      "prompt": "/memorize this for future project work",
+      "expected": ["write only project-local authoritative Markdown", "do not claim model or global user memory", "do not authorize deletion or unrelated mutation"]
+    }
+  ]
+}

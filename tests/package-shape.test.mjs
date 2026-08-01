@@ -7,12 +7,16 @@ const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.
 
 test("package exposes one canonical Pi extension, two package-owned skills, and side-effect-free contracts/core", () => {
   assert.deepEqual(manifest.pi.extensions, ["./dist/pi/index.js"]);
+  assert.deepEqual(manifest.pi.prompts, ["./prompts"]);
   assert.deepEqual(manifest.pi.skills, ["./skills"]);
   assert.equal(manifest.sideEffects, false);
   assert.equal(manifest.dependencies["@aefree/pi-capability-registry"], "^0.1.0");
   assert.equal(manifest.bundledDependencies, undefined, "the shared kernel is co-installed instead of copied into nested provider tarballs");
   assert.equal(JSON.stringify(manifest).includes("file:../"), false);
   for (const resource of [
+    "prompts/memorize.md",
+    "evals/memorize/cases.json",
+    "evals/memorize/ownership-cases.json",
     "skills/grooming-project-artifacts/SKILL.md",
     "skills/file-todos/SKILL.md",
     "skills/file-todos/assets/todo-template.md",
@@ -23,6 +27,17 @@ test("package exposes one canonical Pi extension, two package-owned skills, and 
     "skills/file-todos/references/work-logs.md",
   ]) assert(existsSync(new URL(`../${resource}`, import.meta.url)), `Missing packaged skill resource: ${resource}`);
   assert.deepEqual(Object.keys(manifest.exports).sort(), [".", "./contracts", "./contracts/v1", "./contracts/v1/conformance", "./core", "./pi"]);
+});
+
+test("memorize prompt owns bounded project-artifact capture without compatibility aliases", () => {
+  const prompt = readFileSync(new URL("../prompts/memorize.md", import.meta.url), "utf8");
+  assert.match(prompt, /Direct `\/memorize` invocation authorizes creation or focused update of one resolved project-learning artifact/);
+  assert.match(prompt, /does not alter model, session, or global user memory/);
+  assert.match(prompt, /project_artifact_search/);
+  assert.match(prompt, /root cause, reusable resolution pattern, verification evidence/);
+  assert.match(prompt, /ask one narrow destination question/);
+  assert.match(prompt, /do not write/);
+  assert.doesNotMatch(prompt, /\/compound|compatib(?:ility|le) alias/i);
 });
 
 test("importing contract/core public modules does not register Pi resources", () => {

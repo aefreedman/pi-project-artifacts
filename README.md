@@ -6,9 +6,12 @@ Canonical project-local Markdown artifact search and deterministic file-todo lif
 
 - tool: `project_artifact_search`
 - tools: `project_todo_validate`, `project_todo_list`, `project_todo_inspect`, `project_todo_allocate`, `project_todo_create`, `project_todo_transition`
+- prompt: `/memorize`
 - skills: `file-todos`, `grooming-project-artifacts`
 
 The package registers `ArtifactSearchServiceV1` and `TodoLifecycleServiceV1` per Pi session. It owns the side-effect-free artifact profile/service contracts under `@aefree/pi-project-artifacts/contracts/v1`; providers such as `pi-unity` register through those contracts in either load order.
+
+`/memorize` persists one verified reusable learning as authoritative project Markdown. Invocation authorizes only one resolved artifact creation or focused update; evidence, duplicate detection, canonical destination resolution, profile constraints, and post-write validation remain mandatory. It never claims model, session, or global user memory.
 
 `grooming-project-artifacts` owns the read-first procedure for organizing, normalizing, deduplicating, and optionally cleaning up project Markdown. It uses structured artifact search plus exact source evidence, leaves profile-defined migrations to owning migrators, and requires explicit authority before edits.
 

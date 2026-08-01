@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "memorize-owns-semantic-capture-contract",
+      "prompt": "/memorize the verified bounded retry recovery learning",
+      "expected": ["apply the prompt-owned symptom, root-cause, resolution-pattern, verification, applicability, limits or tradeoffs, anti-pattern, and evidence or provenance contract without loading a workflow-package reference or fixed universal template"]
+    }
+  ]
+}

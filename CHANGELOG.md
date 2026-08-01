@@ -11,6 +11,7 @@
 - Locked/hash-guarded file-todo allocation, staging, exclusive target creation, physical containment, normalized collision checks, external-edit detection, rollback, and non-mutating pre-existing conflict diagnostics.
 - `file-todos` skill as a thin canonical-tool workflow with skill-relative assets.
 - `grooming-project-artifacts` skill for evidence-backed documentation and todo cleanup with explicit mutation authority and owning-migrator boundaries.
+- `/memorize` prompt for verified, deduplicated, owner-resolved project-learning capture without model/global-memory claims or a `/compound` compatibility alias.
 - Artifact/todo characterization, failure-injection, root-isolation, malformed-input, ordering, lock, atomicity, path, collision, Pi registration, and behavioral-eval fixtures.
 
 ### Changed
