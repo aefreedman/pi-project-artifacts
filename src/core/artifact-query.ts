@@ -1,6 +1,6 @@
 import * as path from "node:path";
-import type { ArtifactProfileV1, ArtifactSearchRequestV1 } from "../contracts/v1/index.js";
-import type { ArtifactIndexEntryV1, ArtifactIndexV1, ArtifactKind, SearchField } from "./artifact-index.js";
+import type { ArtifactFieldDefinitionV1, ArtifactProfileV1, ArtifactSearchRequestV1 } from "../contracts/v1/index.js";
+import type { ArtifactIndexEntryV1, ArtifactIndexV1, ArtifactKind, ProfileEntryData, SearchField } from "./artifact-index.js";
 import { ProjectArtifactError } from "./errors.js";
 import { stringValues } from "./markdown.js";
 
@@ -11,8 +11,27 @@ const FIELD_WEIGHTS = Object.freeze({ title: 10, tags: 8, frontmatter: 6, headin
 const SEVERITY_BOOSTS: Readonly<Record<string, number>> = Object.freeze({ critical: 3, high: 2, medium: 1, low: 0.25 });
 const TODO_STATUS_BOOSTS: Readonly<Record<string, number>> = Object.freeze({ ready: 3, pending: 2, complete: -0.5, blocked: -1 });
 const TODO_PRIORITY_BOOSTS: Readonly<Record<string, number>> = Object.freeze({ p1: 3, p2: 1.5, p3: 0.5 });
-const GENERIC_FILTER_FIELDS = new Set(["status", "priority", "tags", "module", "component", "severity"]);
+const GENERIC_FIELDS: readonly ArtifactFieldDefinitionV1[] = Object.freeze([
+  // These are generic Markdown fields, not todo-only schemas. Their values
+  // remain unrestricted and exact-normalized filters work for arbitrary docs.
+  { name: "status", type: "string", indexed: true, filterable: true },
+  { name: "priority", type: "string", indexed: true, filterable: true },
+  { name: "tags", type: "string_list", indexed: true, filterable: true },
+  { name: "module", type: "string", indexed: true, filterable: true },
+  { name: "component", type: "string", indexed: true, filterable: true },
+  { name: "severity", type: "string", indexed: true, filterable: true },
+]);
 const SEARCH_FIELDS: readonly SearchField[] = ["path", "title", "tags", "frontmatter", "headings", "body"];
+export const BODY_PREVIEW_SEARCH_CHARS = 1_200;
+export type ArtifactFieldDescription = Readonly<{
+  name: string;
+  owner: Readonly<{ kind: "generic" | "profile"; profileId?: string; packageName: string; packageVersion: string }>;
+  type: ArtifactFieldDefinitionV1["type"];
+  indexed: boolean;
+  filterable: boolean;
+  required: boolean;
+  enumValues: readonly string[];
+}>;
 
 export type ArtifactSearchItem = Readonly<{
   path: string;
@@ -23,22 +42,27 @@ export type ArtifactSearchItem = Readonly<{
   frontmatter: Readonly<Record<string, unknown>>;
   reasons: readonly string[];
   related?: readonly RelatedArtifact[];
+  profileValidation: readonly ProfileEntryData[];
 }>;
 export type RelatedArtifact = Readonly<{ path: string; kind: ArtifactKind; title?: string; relation: "linksTo" | "linkedFrom" }>;
-export type ArtifactQueryResult = Readonly<{ results: readonly ArtifactSearchItem[]; totalMatches: number; preparedMatches: number; allowedFilterFields: readonly string[] }>;
+export type ArtifactQueryResult = Readonly<{ results: readonly ArtifactSearchItem[]; totalMatches: number; preparedMatches: number; fieldDefinitions: readonly ArtifactFieldDescription[] }>;
+
+export function describeArtifactFields(profiles: readonly ArtifactProfileV1[]): readonly ArtifactFieldDescription[] {
+  const generic = GENERIC_FIELDS.map((field) => Object.freeze({
+    ...field, required: field.required === true, enumValues: Object.freeze([...(field.enumValues ?? [])]),
+    owner: Object.freeze({ kind: "generic" as const, packageName: "@aefree/pi-project-artifacts", packageVersion: "0.1.0" }),
+  }));
+  const profileFields = profiles.flatMap((profile) => profile.fields.map((field) => Object.freeze({
+    ...field, required: field.required === true, enumValues: Object.freeze([...(field.enumValues ?? [])]),
+    owner: Object.freeze({ kind: "profile" as const, profileId: profile.id, packageName: profile.owner.packageName, packageVersion: profile.owner.packageVersion }),
+  })));
+  return Object.freeze([...generic, ...profileFields].sort((left, right) => left.name.localeCompare(right.name) || left.owner.packageName.localeCompare(right.owner.packageName) || profileOwnerId(left).localeCompare(profileOwnerId(right))));
+}
+function profileOwnerId(field: ArtifactFieldDescription): string { return field.owner.kind === "profile" ? field.owner.profileId ?? "" : ""; }
 
 export function searchArtifactIndex(index: ArtifactIndexV1, request: ArtifactSearchRequestV1, profiles: readonly ArtifactProfileV1[]): ArtifactQueryResult {
-  const allowed = allowedFilterFields(profiles);
-  const filters = normalizeFilters(request.filters);
-  for (const field of Object.keys(filters)) {
-    if (!allowed.has(field)) {
-      throw new ProjectArtifactError("missing_profile", `No compatible artifact profile defines filter '${field}'.`, {
-        field,
-        expectedContractVersion: 1,
-        remediation: "Install or enable the package that owns this artifact-profile field, then retry in a fresh session.",
-      });
-    }
-  }
+  const fieldDefinitions = describeArtifactFields(profiles);
+  const filters = normalizeFilters(request.filters, fieldDefinitions);
   const queryTerms = tokenizeQuery(request.query);
   const requiredTerms = dedupe(normalizeList(request.requiredTerms));
   const optionalTerms = dedupe(normalizeList(request.optionalTerms));
@@ -55,7 +79,7 @@ export function searchArtifactIndex(index: ArtifactIndexV1, request: ArtifactSea
     const { score, reasons } = scoreEntry(entry, request.query, scoringTerms, String(request.rankProfile ?? "balanced"), searchFields);
     if (score <= 0) continue;
     const titlePart = entry.title === undefined ? {} : { title: entry.title };
-    scored.push(Object.freeze({ path: entry.path, kind: entry.kind, ...titlePart, score, frontmatter: entry.frontmatter, reasons: Object.freeze(reasons) }));
+    scored.push(Object.freeze({ path: entry.path, kind: entry.kind, ...titlePart, score, frontmatter: entry.frontmatter, reasons: Object.freeze(reasons), profileValidation: entry.profileData }));
   }
   scored.sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
   const totalMatches = scored.length;
@@ -67,7 +91,7 @@ export function searchArtifactIndex(index: ArtifactIndexV1, request: ArtifactSea
     return Object.freeze({ ...item, ...(snippet === undefined ? {} : { snippet }) });
   });
   if (request.includeRelated) prepared = attachRelated(prepared, index, request.relatedLimit);
-  return Object.freeze({ results: Object.freeze(prepared), totalMatches, preparedMatches: prepared.length, allowedFilterFields: Object.freeze([...allowed].sort()) });
+  return Object.freeze({ results: Object.freeze(prepared), totalMatches, preparedMatches: prepared.length, fieldDefinitions });
 }
 
 export function formatArtifactResults(result: ArtifactQueryResult, request: ArtifactSearchRequestV1, metadata: { indexPath: string; refreshed: boolean; stats: { added: number; updated: number; removed: number; unchanged: number }; totalFiles: number }): string {
@@ -78,6 +102,7 @@ export function formatArtifactResults(result: ArtifactQueryResult, request: Arti
   const changes = `+${metadata.stats.added}/~${metadata.stats.updated}/-${metadata.stats.removed}`;
   const indexSummary = detailed ? `Index: ${metadata.indexPath} (${state}; ${metadata.totalFiles} files, ${changes})` : `Index ${state}; files=${metadata.totalFiles}; changes=${changes}.`;
   const lines = [`${result.totalMatches} matching artifact${result.totalMatches === 1 ? "" : "s"}; showing ${shown.length}. ${indexSummary}`];
+  if (fieldsForSearch(request).includes("body")) lines.push(`Body matching is preview-only: the first ${BODY_PREVIEW_SEARCH_CHARS} characters per Markdown body. For exhaustive body search, run the suggested rg command and read matching files directly.`);
   if (shown.length === 0) return lines.join("\n");
   lines.push("");
   const render = (item: ArtifactSearchItem, index: number) => {
@@ -88,6 +113,7 @@ export function formatArtifactResults(result: ArtifactQueryResult, request: Arti
       if (summary) lines.push(`   ${summary}`);
       if (item.snippet) lines.push(`   snippet: ${item.snippet}`);
       if (request.explain && item.reasons.length > 0) lines.push(`   reasons: ${item.reasons.slice(0, 6).join("; ")}`);
+      if (item.profileValidation.length > 0) lines.push(`   profile validation: ${item.profileValidation.map((profile) => `${profile.profileId}=${profile.validation.outcome}`).join("; ")}`);
       if (item.related?.length) lines.push(`   related: ${item.related.map((entry) => `${entry.path} (${entry.relation})`).join("; ")}`);
     } else {
       const summary = frontmatterSummary(item.frontmatter, true);
@@ -119,28 +145,56 @@ export function suggestedRg(request: ArtifactSearchRequestV1): string | undefine
   const expression = terms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")).join("|").replaceAll("'", "'\\''");
   return `rg -i --glob '*.md' '${expression}' "\${DOCS_ROOT}" "\${TODOS_ROOT}"`;
 }
-export function controlsFor(request: ArtifactSearchRequestV1, allowedFilterFields: readonly string[]): Readonly<Record<string, unknown>> {
+export function controlsFor(request: ArtifactSearchRequestV1, fieldDefinitions: readonly ArtifactFieldDescription[]): Readonly<Record<string, unknown>> {
   return Object.freeze({
     ranking: Object.freeze({ rankProfile: request.rankProfile ?? "balanced", matchMode: request.matchMode ?? "all", minTermMatches: request.minTermMatches, requiredTerms: normalizeList(request.requiredTerms), optionalTerms: normalizeList(request.optionalTerms), includeBody: request.includeBody !== false, searchFields: fieldsForSearch(request), fieldWeights: FIELD_WEIGHTS, severityBoosts: SEVERITY_BOOSTS, todoStatusBoosts: TODO_STATUS_BOOSTS, todoPriorityBoosts: TODO_PRIORITY_BOOSTS }),
-    filters: allowedFilterFields,
+    bodySearchCoverage: Object.freeze({ mode: "preview_only", indexedCharactersPerDocument: BODY_PREVIEW_SEARCH_CHARS, exhaustiveSearch: "Use suggestedRg, then read each matching Markdown file; the index never searches body text beyond its preview." }),
+    filters: Object.freeze({ exactNormalizedMatching: true, fields: fieldDefinitions.filter((field) => field.filterable) }),
     index: Object.freeze(["workspaceRoot", "docsRoot", "todosRoot", "indexPath", "rebuild", "freshnessMode", "freshnessTtlMs", "outputMode"]),
   });
 }
 
-function allowedFilterFields(profiles: readonly ArtifactProfileV1[]): Set<string> {
-  const output = new Set(GENERIC_FILTER_FIELDS);
-  for (const profile of profiles) for (const field of profile.fields) if (field.filterable) output.add(field.name);
-  return output;
-}
-function normalizeFilters(filters: ArtifactSearchRequestV1["filters"]): Record<string, string[]> {
-  const output: Record<string, string[]> = {};
+type NormalizedFilter = Readonly<{ values: readonly string[]; owner: ArtifactFieldDescription["owner"] }>;
+
+function normalizeFilters(filters: ArtifactSearchRequestV1["filters"], fieldDefinitions: readonly ArtifactFieldDescription[]): Record<string, NormalizedFilter> {
+  const output: Record<string, NormalizedFilter> = {};
+  const byName = new Map<string, ArtifactFieldDescription[]>();
+  for (const field of fieldDefinitions) if (field.filterable) (byName.get(field.name) ?? (byName.set(field.name, []), byName.get(field.name)!)).push(field);
   for (const [key, value] of Object.entries(filters ?? {})) {
     if (!/^[a-z][a-z0-9_]*$/u.test(key)) throw new ProjectArtifactError("filter_invalid", `Invalid artifact filter field '${key}'.`);
-    const values = normalizeList(value);
-    if (values.length > 0) output[key] = values;
+    const definitions = byName.get(key);
+    if (definitions === undefined) {
+      throw new ProjectArtifactError("missing_profile", `No compatible artifact profile defines filter '${key}'.`, { field: key, expectedContractVersion: 1, remediation: "Install or enable the package that owns this artifact-profile field, then retry in a fresh session." });
+    }
+    if (definitions.length !== 1) {
+      const owners = definitions.map((definition) => definition.owner.kind === "generic"
+        ? "generic"
+        : `profile '${definition.owner.profileId}' (${definition.owner.packageName})`);
+      throw new ProjectArtifactError("filter_ambiguous", `Filter '${key}' is an unqualified field-name collision between ${owners.join(" and ")}; profile fields never merge with generic or other profile semantics.`, { field: key, definitions });
+    }
+    const definition = definitions[0]!;
+    const values = stringValues(value).map((item) => validateFilterValue(key, item, definition)).filter(Boolean);
+    if (values.length > 0) output[key] = Object.freeze({ values: Object.freeze([...new Set(values)]), owner: definition.owner });
   }
   return output;
 }
+
+function validateFilterValue(field: string, raw: string, definition: ArtifactFieldDescription): string {
+  const value = normalizeSearchText(raw);
+  if (!value) throw new ProjectArtifactError("filter_invalid", `Filter '${field}' must not be empty.`);
+  const type = definition.type;
+  const typeValid = type === "string" || type === "string_list"
+    || type === "integer" && /^-?\d+$/u.test(raw.trim())
+    || type === "boolean" && (value === "true" || value === "false")
+    || type === "date" && isIsoDate(raw.trim());
+  if (!typeValid) throw new ProjectArtifactError("filter_type_invalid", `Filter '${field}' requires a ${type} value; received '${raw}'.`, { field, type, value: raw });
+  const enumValues = [...new Set(definition.enumValues.map(normalizeSearchText))];
+  if (enumValues.length > 0 && !enumValues.includes(value)) {
+    throw new ProjectArtifactError("filter_enum_invalid", `Filter '${field}' must be one of: ${enumValues.join(", ")}.`, { field, value: raw, enumValues });
+  }
+  return value;
+}
+function isIsoDate(value: string): boolean { return /^\d{4}-\d{2}-\d{2}$/u.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)); }
 function normalizeList(value: string | readonly string[] | undefined): string[] { return stringValues(value).map((item) => normalizeSearchText(item)).filter(Boolean); }
 function normalizeSearchText(value: string): string { return value.toLowerCase().replace(/[-_/]+/gu, " ").replace(/\s+/gu, " ").trim(); }
 function tokenizeQuery(value: string | undefined): string[] {
@@ -155,16 +209,20 @@ function fieldsForSearch(request: ArtifactSearchRequestV1): SearchField[] {
 }
 function passesScopes(entry: ArtifactIndexEntryV1, scopes: readonly string[]): boolean {
   if (scopes.length === 0 || scopes.includes("all")) return true;
-  return scopes.some((scope) => scope === "docs" ? entry.root === "docs" : scope === "todos" ? entry.root === "todos" : scope === "solutions" ? entry.kind === "solution" : scope === "plans" ? entry.kind === "plan" : false);
+  return scopes.some((scope) => scope === "docs" ? entry.root === "docs" : scope === "todos" ? entry.root === "todos" : scope === "solutions" ? entry.kind === "solution" : scope === "plans" ? entry.kind === "plan" : scope === "memories" ? entry.kind === "memory" : false);
 }
-function passesFilters(entry: ArtifactIndexEntryV1, filters: Readonly<Record<string, readonly string[]>>, includeCompleted: boolean | undefined): boolean {
+function passesFilters(entry: ArtifactIndexEntryV1, filters: Readonly<Record<string, NormalizedFilter>>, includeCompleted: boolean | undefined): boolean {
   const status = statusFrom(entry);
-  if (includeCompleted === false && entry.kind === "todo" && status === "complete" && (filters.status?.length ?? 0) === 0) return false;
-  for (const [field, expected] of Object.entries(filters)) {
-    const actual = field === "status" ? status === undefined ? [] : [status]
-      : field === "priority" ? priorityFrom(entry) === undefined ? [] : [priorityFrom(entry)!]
+  if (includeCompleted === false && entry.kind === "todo" && status === "complete" && filters.status === undefined) return false;
+  for (const [field, filter] of Object.entries(filters)) {
+    // A profile-owned field is meaningful only for entries to which that exact
+    // profile applied. Raw frontmatter cannot impersonate profile ownership.
+    if (filter.owner.kind === "profile" && !entry.profileData.some((profile) => profile.profileId === filter.owner.profileId
+      && profile.packageName === filter.owner.packageName && profile.packageVersion === filter.owner.packageVersion)) return false;
+    const actual = filter.owner.kind === "generic" && field === "status" ? status === undefined ? [] : [status]
+      : filter.owner.kind === "generic" && field === "priority" ? priorityFrom(entry) === undefined ? [] : [priorityFrom(entry)!]
       : stringValues(entry.frontmatter[field]).map(normalizeSearchText);
-    if (!expected.some((needle) => actual.some((value) => value === needle || value.includes(needle)))) return false;
+    if (!filter.values.some((needle) => actual.some((value) => value === needle))) return false;
   }
   return true;
 }

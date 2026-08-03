@@ -14,8 +14,8 @@ Inventory and recommendations are read-only. Edit files only when the user expli
 
 ## Workflow
 
-1. Read applicable project instructions and authoring guidance. Identify protected plans, solutions, work logs, generated files, and domain-owned artifacts.
-2. Use `project_artifact_search` for structured discovery within explicit roots. Use exact source reads or bounded repository searches to verify every proposed finding.
+1. Read applicable project instructions and authoring guidance. Treat plans, solutions (verified technical problem/resolution learnings), and memories (verified durable non-solution knowledge) as optional existing conventions; identify protected artifacts, work logs, generated files, and domain-owned artifacts without restricting other docs.
+2. Use `project_artifact_describe` when an applicable profile schema may matter; it exposes workspace-specific profile availability. Use `project_artifact_search` for structured, YAML-frontmatter-filtered candidate discovery and validation diagnostics within explicit roots. Its body index is preview-only: use bounded `rg` for exhaustive or literal body evidence, then read exact source files to verify every proposed finding.
 3. Identify stale, duplicate, malformed, misplaced, weakly titled or tagged, inconsistent, and poorly linked artifacts. Separate observed defects from subjective editorial preferences.
 4. Distinguish generic Markdown corrections from profile-defined or domain-specific schema work. Never perform a bulk specialized migration by hand when an owning migrator exists. If a required profile or owning capability is unavailable, leave affected documents unchanged and report the exact gap.
 5. Prefer small, reviewable title, metadata, tag, status, placement, and cross-reference corrections. Do not rewrite documents wholesale merely for stylistic uniformity.

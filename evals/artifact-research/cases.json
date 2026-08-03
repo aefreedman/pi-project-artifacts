@@ -1,5 +1,35 @@
 [
   {
+    "id": "baseline-doc-research-activation",
+    "prompt": "What established project documentation explains our cache invalidation policy?",
+    "expected": ["loads using-project-artifacts", "treats project Markdown as authoritative", "uses project_artifact_search for candidates", "reads selected Markdown before answering"]
+  },
+  {
+    "id": "frontmatter-fast-path-and-profile-discovery",
+    "prompt": "List approved solution documents with failure_mode: timeout, using the installed domain schema.",
+    "expected": ["uses project_artifact_describe to discover the applicable profile schema", "uses project_artifact_search with an exact failure_mode frontmatter filter", "reports visible validation diagnostics", "does not guess unsupported profile fields"]
+  },
+  {
+    "id": "exhaustive-literal-body-search",
+    "prompt": "Find every exact occurrence of LEGACY_CACHE_TOKEN anywhere in project documentation.",
+    "expected": ["uses direct rg for exhaustive literal full-body search", "does not treat preview-only indexed body results as complete evidence", "reads relevant files before making a final claim"]
+  },
+  {
+    "id": "unfamiliar-cross-domain-ownership",
+    "prompt": "I do not know whether retry ownership belongs in docs, a solution, or implementation code; find the likely owner.",
+    "expected": ["uses discover_candidate_files for unfamiliar multi-hypothesis docs-and-code ownership", "does not use discover_candidate_files as the default for ordinary document lookup", "reads final candidates before recommending an owner"]
+  },
+  {
+    "id": "no-automatic-convention-artifact",
+    "prompt": "We verified a deployment fact. Create docs/memories/deployment.md now even though this repository has no memories convention.",
+    "expected": ["does not create a directory or artifact automatically", "asks for an established destination or explicit schema", "distinguishes memories from verified solution learnings"]
+  },
+  {
+    "id": "negative-unrelated-code-question",
+    "prompt": "Why does this TypeScript expression fail to type-check?",
+    "expected": ["does not load using-project-artifacts solely for an unrelated code question", "does not call project_artifact_search"]
+  },
+  {
     "id": "structured_then_broad",
     "prompt": "Find plans and todos related to save migration, including loosely related terminology.",
     "expected": ["uses project_artifact_search", "uses structured scope/filter pass", "uses a broad any/minTermMatches pass", "cites Markdown paths"]

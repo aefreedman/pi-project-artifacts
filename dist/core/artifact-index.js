@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, readdir, realpath, stat } from "node:fs/promises";
 import * as path from "node:path";
+import { assertArtifactValidationResultV1 } from "../contracts/v1/index.js";
 import { cleanupOwnedOrphanTemps, withDirectoryLock, withMutationQueue, writeJsonAtomic } from "./atomic.js";
 import { ProjectArtifactError, throwIfAborted } from "./errors.js";
 import { extractArtifactLinks, extractHeadings, extractTitle, parseMarkdown, stringValues } from "./markdown.js";
@@ -36,6 +37,13 @@ export function resolveIndexPath(request, roots) {
         throw new ProjectArtifactError("index_path_authoritative", "indexPath must not overlap authoritative docs or todos roots.", { indexPath: normalizePath(indexPath) });
     }
     return indexPath;
+}
+/** Resolve a requested workspace within the physical session boundary without indexing it. */
+export async function resolveContainedWorkspaceRoot(context, request = {}) {
+    throwIfAborted(context.signal);
+    const physicalExecutionRoot = await physicalDirectory(path.resolve(context.cwd));
+    const lexicalRoots = resolveArtifactRoots(context.cwd, request);
+    return await scopedPhysicalDirectory(physicalExecutionRoot, lexicalRoots.workspaceRoot, "workspaceRoot");
 }
 export async function buildOrRefreshIndex(request, context, profiles = [], failureInjector) {
     throwIfAborted(context.signal);
@@ -95,11 +103,19 @@ async function refreshLocked(request, context, roots, indexPath, mode, profiles,
     for (const [relative, file] of current) {
         throwIfAborted(context.signal);
         const previous = files[relative];
-        if (previous !== undefined && previous.contentHash === file.contentHash && previous.size === file.size) {
+        const contentUnchanged = previous !== undefined && previous.contentHash === file.contentHash && previous.size === file.size;
+        // A non-fast refresh is also the boundary for dynamic profile applicability
+        // and diagnostics. Profile callbacks may depend on external workspace state.
+        if (contentUnchanged && profiles.length === 0) {
             unchanged += 1;
             continue;
         }
-        files[relative] = await parseEntry(file, relative, context, roots.workspaceRoot, profiles);
+        const next = await parseEntry(file, relative, context, roots.workspaceRoot, profiles);
+        if (contentUnchanged && profileDataEqual(previous.profileData, next.profileData)) {
+            unchanged += 1;
+            continue;
+        }
+        files[relative] = next;
         previous === undefined ? added += 1 : updated += 1;
     }
     for (const relative of Object.keys(files)) {
@@ -141,17 +157,29 @@ async function parseEntry(file, relative, context, workspaceRoot, profiles) {
     const profileData = [];
     for (const profile of profiles) {
         throwIfAborted(context.signal);
-        const applicable = profile.artifactKinds.length === 0 || profile.artifactKinds.includes(candidate.kind)
-            ? profile.appliesTo === undefined || await profile.appliesTo(context, { workspaceRoot, artifactPath: file.absolute, signal: context.signal })
-            : false;
-        if (!applicable)
-            continue;
-        let validation = { outcome: "valid" };
-        for (const validator of profile.validators) {
-            validation = await validator.validate(context, { operation: "index", workspaceRoot, artifact: candidate, signal: context.signal });
-            if (validation.outcome !== "valid")
-                break;
+        let applicable = false;
+        let validation;
+        try {
+            applicable = profile.artifactKinds.length === 0 || profile.artifactKinds.includes(candidate.kind)
+                ? profile.appliesTo === undefined || await profile.appliesTo(context, { workspaceRoot, artifactPath: file.absolute, signal: context.signal })
+                : false;
+            if (applicable) {
+                validation = { outcome: "valid" };
+                for (const validator of profile.validators) {
+                    validation = await validator.validate(context, { operation: "index", workspaceRoot, artifact: candidate, signal: context.signal });
+                    assertArtifactValidationResultV1(validation);
+                    if (validation.outcome !== "valid")
+                        break;
+                }
+            }
         }
+        catch (error) {
+            throwIfAborted(context.signal);
+            applicable = true;
+            validation = { outcome: "error", code: "profile_validation_error", retryable: false };
+        }
+        if (!applicable || validation === undefined)
+            continue;
         profileData.push(Object.freeze({ profileId: profile.id, packageName: profile.owner.packageName, packageVersion: profile.owner.packageVersion, contractVersion: 1, validation }));
     }
     const title = extractTitle(parsed.body, parsed.frontmatter);
@@ -224,7 +252,7 @@ export function validateArtifactIndexV1(value) {
     const files = asRecord(record.files, "files");
     for (const [key, entryValue] of Object.entries(files)) {
         const entry = asRecord(entryValue, "entry");
-        if (entry.path !== key || !/^(?:docs|todos)\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/u.test(key) || (entry.root !== "docs" && entry.root !== "todos") || !["doc", "solution", "plan", "todo", "other-doc"].includes(String(entry.kind)))
+        if (entry.path !== key || !/^(?:docs|todos)\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/u.test(key) || (entry.root !== "docs" && entry.root !== "todos") || !["doc", "solution", "plan", "memory", "todo", "other-doc"].includes(String(entry.kind)))
             throw new TypeError("entry identity invalid");
         if (!Number.isFinite(entry.mtimeMs) || !Number.isSafeInteger(entry.size) || entry.size < 0 || !/^sha256:[a-f0-9]{64}$/u.test(String(entry.contentHash)))
             throw new TypeError("entry stat/hash invalid");
@@ -301,9 +329,14 @@ function detectKind(relative, root) {
         return "solution";
     if (underRoot.startsWith("plans/"))
         return "plan";
+    if (underRoot.startsWith("memories/"))
+        return "memory";
     return "other-doc";
 }
 function rootsMatch(index, roots) { return index.rootIdentity === roots.rootIdentity && normalizeForIdentity(index.workspaceRoot) === normalizeForIdentity(roots.workspaceRoot) && normalizeForIdentity(index.docsRoot) === normalizeForIdentity(roots.docsRoot) && normalizeForIdentity(index.todosRoot) === normalizeForIdentity(roots.todosRoot); }
+function profileDataEqual(left, right) {
+    return JSON.stringify(left) === JSON.stringify(right);
+}
 function profilesMatch(index, profiles) {
     const expected = profiles.map((profile) => `${profile.id}\0${profile.owner.packageName}\0${profile.owner.packageVersion}\0${profile.contractVersion}`).sort();
     const actual = index.profiles.map((profile) => `${profile.profileId}\0${profile.packageName}\0${profile.packageVersion}\0${profile.contractVersion}`).sort();
@@ -336,7 +369,7 @@ function isLegacyIndexV4(value) {
         const files = asRecord(record.files, "legacy.files");
         for (const [key, entryValue] of Object.entries(files)) {
             const entry = asRecord(entryValue, "legacy.entry");
-            if (entry.path !== key || (entry.root !== "docs" && entry.root !== "todos") || !["doc", "solution", "plan", "todo", "other-doc"].includes(String(entry.kind)))
+            if (entry.path !== key || (entry.root !== "docs" && entry.root !== "todos") || !["doc", "solution", "plan", "memory", "todo", "other-doc"].includes(String(entry.kind)))
                 return false;
             if (!Number.isFinite(entry.mtimeMs) || !Number.isFinite(entry.size) || !isStringArray(entry.headings) || (entry.frontmatter !== undefined && (entry.frontmatter === null || typeof entry.frontmatter !== "object" || Array.isArray(entry.frontmatter))))
                 return false;

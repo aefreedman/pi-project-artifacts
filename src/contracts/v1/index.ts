@@ -61,7 +61,7 @@ export interface ArtifactFieldDefinitionV1 {
 
 export interface ArtifactCandidateV1 {
   readonly path: string;
-  readonly kind: "doc" | "solution" | "plan" | "todo" | "other";
+  readonly kind: "doc" | "solution" | "plan" | "memory" | "todo" | "other";
   readonly frontmatter: Readonly<Record<string, unknown>>;
   readonly body?: string;
 }

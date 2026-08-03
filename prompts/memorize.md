@@ -18,7 +18,7 @@ This command writes durable project documentation. It does not alter model, sess
 
 Read applicable project instructions. Require direct outcome evidence: explicit user confirmation tied to the symptom, direct validation of the reported scenario, reproduced failure followed by an equivalent pass, or another recorded confirmation source. Bound cause and resolution claims to that evidence; if provenance is missing or ambiguous, report the gap and do not write.
 
-Use `project_artifact_search` and exact source reads to inspect established documentation domains, related artifacts, and possible duplicates. Select a clearly matching canonical domain. If several destinations fit or none is established, ask one narrow destination question instead of creating a directory from a generic convention.
+Use `project_artifact_describe` when profile schema discovery or workspace-specific profile availability may affect the destination. Use `project_artifact_search` with exact YAML-frontmatter filters for fast candidate discovery and validation diagnostics, then exact source reads to inspect established documentation domains, related artifacts, and possible duplicates. Its body index is preview-only; use direct `rg` for exhaustive or literal full-body duplicate checks. Select a clearly matching canonical domain. Existing `plans`, `solutions` (verified technical problem/resolution learnings), and `memories` (verified durable non-solution knowledge) are optional conventions, not mandatory destinations. If several destinations fit or none is established, ask one narrow destination question instead of creating a directory from a generic convention.
 
 ## Capture workflow
 

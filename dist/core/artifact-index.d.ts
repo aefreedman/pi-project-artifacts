@@ -1,9 +1,9 @@
-import type { ArtifactExecutionContextV1, ArtifactProfileV1, ArtifactValidationResultV1 } from "../contracts/v1/index.js";
+import { type ArtifactExecutionContextV1, type ArtifactProfileV1, type ArtifactValidationResultV1 } from "../contracts/v1/index.js";
 import { type FailureInjector } from "./atomic.js";
 import { type ArtifactRoots } from "./roots.js";
 export declare const ARTIFACT_INDEX_SCHEMA: "@aefree/pi-project-artifacts/index";
 export declare const ARTIFACT_INDEX_VERSION: 1;
-export type ArtifactKind = "doc" | "solution" | "plan" | "todo" | "other-doc";
+export type ArtifactKind = "doc" | "solution" | "plan" | "memory" | "todo" | "other-doc";
 export type SearchField = "path" | "title" | "tags" | "frontmatter" | "headings" | "body";
 export type FreshnessMode = "auto" | "strict" | "memory";
 export type ProfileEntryData = Readonly<{
@@ -70,6 +70,8 @@ export type IndexRequest = Readonly<{
 }>;
 export declare function defaultIndexFilename(roots: ArtifactRoots): string;
 export declare function resolveIndexPath(request: IndexRequest, roots: ArtifactRoots): string;
+/** Resolve a requested workspace within the physical session boundary without indexing it. */
+export declare function resolveContainedWorkspaceRoot(context: ArtifactExecutionContextV1, request?: Pick<IndexRequest, "workspaceRoot">): Promise<string>;
 export declare function buildOrRefreshIndex(request: IndexRequest, context: ArtifactExecutionContextV1, profiles?: readonly ArtifactProfileV1[], failureInjector?: FailureInjector): Promise<RefreshResult>;
 export declare function inspectIndexOwnership(indexPath: string): Promise<{
     kind: "absent";

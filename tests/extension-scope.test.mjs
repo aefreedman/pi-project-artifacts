@@ -84,6 +84,41 @@ test("profile provider loaded before the Pi adapter is resolved for that invocat
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("artifact describe exposes only workspace-applicable schemas with a fresh invocation context", async () => {
+  const root = await workspace();
+  try {
+    const scope = {};
+    const seen = [];
+    createArtifactProfileRegistryV1().register(scope, {
+      ...profile("fixture.schema", "mode", seen),
+      fields: [{ name: "mode", type: "string", indexed: true, filterable: true, required: true, enumValues: ["safe", "fast"] }],
+    });
+    createArtifactProfileRegistryV1().register(scope, {
+      ...profile("fixture.not-applicable", "hidden"),
+      async appliesTo() { return false; },
+    });
+    const pi = new FakePi();
+    registerProjectArtifacts(pi);
+    await pi.emit("session_start", context(scope, root));
+    const controller = new AbortController();
+    const result = await pi.tools.get("project_artifact_describe").execute("describe", { workspaceRoot: root }, controller.signal, undefined, context(scope, root));
+    const generic = result.details.fields.find((field) => field.name === "status" && field.owner.kind === "generic");
+    const mode = result.details.fields.find((field) => field.name === "mode");
+    assert.equal(generic.filterable, true);
+    assert.deepEqual(generic.enumValues, []);
+    assert.equal(result.details.fields.some((field) => field.name === "hidden"), false);
+    assert.equal(result.details.workspaceRoot, root.replaceAll("\\", "/"));
+    assert.deepEqual(result.details.profileAvailability.map((entry) => [entry.profileId, entry.decision]), [["fixture.not-applicable", "not_applicable"], ["fixture.schema", "applied"]]);
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].signal, controller.signal);
+    assert.deepEqual(Object.keys(seen[0]).sort(), ["cwd", "requestId", "signal"]);
+    assert.deepEqual(mode, {
+      name: "mode", type: "string", indexed: true, filterable: true, required: true, enumValues: ["safe", "fast"],
+      owner: { kind: "profile", profileId: "fixture.schema", packageName: "@fixture/fixture.schema", packageVersion: "1.0.0" },
+    });
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("late profile registration is resolved at execution time without exposing session scope", async () => {
   const root = await workspace();
   try {

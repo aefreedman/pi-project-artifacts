@@ -6,6 +6,7 @@ import type { RegistrationToken } from "@aefree/pi-capability-registry";
 import {
   createArtifactSearchServiceRegistryV1,
   createTodoLifecycleServiceRegistryV1,
+  resolveArtifactProfilesV1,
   resolveArtifactSearchServiceV1,
   resolveTodoLifecycleServiceV1,
   parseCanonicalTodoPathV1,
@@ -14,8 +15,9 @@ import {
   type TodoLifecycleRequestV1,
 } from "../contracts/v1/index.js";
 import { createArtifactSearchServiceV1, createTodoLifecycleServiceV1 } from "../core/services.js";
+import { describeArtifactFields } from "../core/artifact-query.js";
 import { bindArtifactExecutionScopeV1 } from "../core/execution-context.js";
-import { trackArtifactToolResult } from "../core/artifact-index.js";
+import { resolveContainedWorkspaceRoot, trackArtifactToolResult } from "../core/artifact-index.js";
 import { ProjectArtifactError } from "../core/errors.js";
 
 const STRING_OR_ARRAY = Type.Union([Type.String(), Type.Array(Type.String())]);
@@ -29,8 +31,8 @@ const SEARCH_PARAMETERS = Type.Object({
   docsRoot: Type.Optional(Type.String({ description: "Docs root, absolute or workspace-relative. Defaults to docs." })),
   todosRoot: Type.Optional(Type.String({ description: "Todos root, absolute or workspace-relative. Defaults to todos." })),
   indexPath: Type.Optional(Type.String({ description: "Disposable canonical index path. Defaults under .pi-project-artifacts/index-v1*.json and must remain physically inside the workspace." })),
-  scopes: Type.Optional(Type.Array(StringEnum(["all", "docs", "solutions", "plans", "todos"] as const))),
-  filters: Type.Optional(Type.Record(Type.String(), FILTER_VALUES, { description: "Exact frontmatter filters. Profile-defined fields require the compatible profile package." })),
+  scopes: Type.Optional(Type.Array(StringEnum(["all", "docs", "solutions", "plans", "memories", "todos"] as const))),
+  filters: Type.Optional(Type.Record(Type.String(), FILTER_VALUES, { description: "Exact normalized frontmatter filters. Profile-defined fields require the compatible profile package and reject incompatible typed or enum values." })),
   rankProfile: Type.Optional(StringEnum(["balanced", "frontmatter", "recency", "todos"] as const)),
   matchMode: Type.Optional(StringEnum(["all", "any", "phrase"] as const)),
   minTermMatches: Type.Optional(Type.Integer({ minimum: 1 })),
@@ -86,11 +88,12 @@ export default function registerProjectArtifacts(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "project_artifact_search",
     label: "Search Project Artifacts",
-    description: "Search project-local Markdown docs and todos through the canonical disposable .pi-project-artifacts index. Generic unfiltered search works without optional profiles; profile-defined filters fail explicitly when their provider is missing.",
-    promptSnippet: "Search project Markdown docs and file todos through the canonical project artifact service.",
+    description: "Search project-local Markdown docs, memories, and todos through the canonical disposable .pi-project-artifacts index. Body search indexes only a 1200-character preview; use returned rg/read guidance for exhaustive body search. Generic unfiltered search works without optional profiles; profile-defined filters fail explicitly when their provider is missing.",
+    promptSnippet: "Search project Markdown docs, memories, and file todos through the canonical project artifact service.",
     promptGuidelines: [
       "Use project_artifact_search for structured project docs/todo discovery; authoritative Markdown remains the source of truth.",
-      "Use project_artifact_search filters only for generic fields or fields disclosed by an installed artifact profile; missing profile-defined filters block rather than guessing.",
+      "Body-term matches cover only the first 1200 body characters. For exhaustive body search, run the returned rg command and read each matching file directly.",
+      "Use project_artifact_describe before typed/profile filtering; filters are exact normalized matches and invalid enum/type values block clearly.",
       "Do not edit .pi-project-artifacts indexes manually; they are disposable derived state.",
     ],
     parameters: SEARCH_PARAMETERS,
@@ -99,6 +102,43 @@ export default function registerProjectArtifacts(pi: ExtensionAPI): void {
       const service = requireSearchService(ctx);
       const result = await service.search(executionContext(ctx, signal, toolCallId), params as ArtifactSearchRequestV1);
       return { content: [{ type: "text", text: result.text }], details: { ...result.details, provenance: result.provenance } };
+    },
+  });
+
+  pi.registerTool({
+    name: "project_artifact_describe",
+    label: "Describe Project Artifact Fields",
+    description: "List generic and workspace-applicable artifact-profile YAML fields, including owner, type, indexed/filterable/required flags, enum values, and profile availability. This does not index or mutate project Markdown.",
+    promptSnippet: "Discover exact project-artifact filter schema before using typed or profile fields.",
+    promptGuidelines: ["Use project_artifact_describe to discover generic and workspace-applicable profile-defined YAML fields; profile availability is session-scoped and workspace-specific."],
+    parameters: Type.Object({
+      workspaceRoot: Type.Optional(Type.String({ description: "Workspace root to evaluate. Defaults to the current Pi cwd and must remain physically contained by it." })),
+    }),
+    async execute(toolCallId, params, signal, _onUpdate, ctx) {
+      const invocation = executionContext(ctx, signal, toolCallId);
+      const workspaceRoot = await resolveContainedWorkspaceRoot(invocation, params.workspaceRoot === undefined ? {} : { workspaceRoot: params.workspaceRoot });
+      const resolution = resolveArtifactProfilesV1(ctx.sessionManager);
+      const profiles = resolution.outcome === "available" ? resolution.records : [];
+      const applicable: typeof profiles[number][] = [];
+      const profileAvailability: { profileId: string; packageName: string; packageVersion: string; decision: "applied" | "not_applicable" | "blocked" }[] = [];
+      for (const profile of profiles) {
+        try {
+          const applies = profile.appliesTo === undefined || await profile.appliesTo(invocation, { workspaceRoot, signal: invocation.signal });
+          if (applies) applicable.push(profile);
+          profileAvailability.push({ profileId: profile.id, packageName: profile.owner.packageName, packageVersion: profile.owner.packageVersion, decision: applies ? "applied" : "not_applicable" });
+        } catch (error) {
+          if (invocation.signal.aborted) throw error;
+          profileAvailability.push({ profileId: profile.id, packageName: profile.owner.packageName, packageVersion: profile.owner.packageVersion, decision: "blocked" });
+        }
+      }
+      const fields = describeArtifactFields(applicable);
+      const details = Object.freeze({
+        workspaceRoot: workspaceRoot.replaceAll("\\", "/"),
+        fields,
+        profileAvailability: Object.freeze(profileAvailability.sort((left, right) => left.profileId.localeCompare(right.profileId))),
+        profileResolution: Object.freeze({ outcome: resolution.outcome, providerIds: resolution.outcome === "available" ? profiles.map((profile) => profile.id).sort() : resolution.providerIds }),
+      });
+      return { content: [{ type: "text" as const, text: JSON.stringify(details, null, 2) }], details };
     },
   });
 

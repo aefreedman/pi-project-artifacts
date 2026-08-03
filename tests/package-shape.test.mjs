@@ -5,7 +5,7 @@ import test from "node:test";
 
 const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
-test("package exposes one canonical Pi extension, two package-owned skills, and side-effect-free contracts/core", () => {
+test("package exposes one canonical Pi extension, three package-owned skills, and side-effect-free contracts/core", () => {
   assert.deepEqual(manifest.pi.extensions, ["./dist/pi/index.js"]);
   assert.deepEqual(manifest.pi.prompts, ["./prompts"]);
   assert.deepEqual(manifest.pi.skills, ["./skills"]);
@@ -18,6 +18,7 @@ test("package exposes one canonical Pi extension, two package-owned skills, and 
     "evals/memorize/cases.json",
     "evals/memorize/ownership-cases.json",
     "skills/grooming-project-artifacts/SKILL.md",
+    "skills/using-project-artifacts/SKILL.md",
     "skills/file-todos/SKILL.md",
     "skills/file-todos/assets/todo-template.md",
     "skills/file-todos/references/commands.md",

@@ -111,6 +111,136 @@ test("profile-defined v1/v2 filters remain explicit and deterministic", async ()
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("memories have a distinct scope and body search discloses its preview boundary", async () => {
+  const root = await fixture();
+  try {
+    const tailTerm = "tailonlyneedle";
+    await put(root, "docs/memories/decision.md", `# Memory Needle\n\n${"x".repeat(1_250)}${tailTerm}\n`);
+    const memory = await executeArtifactSearch(context(root), { query: "memory needle", scopes: ["memories"], freshnessMode: "strict" }, missingProfiles());
+    assert.deepEqual(memory.details.results.map((entry) => entry.path), ["docs/memories/decision.md"]);
+    assert.equal(memory.details.results[0].kind, "memory");
+    const tail = await executeArtifactSearch(context(root), { query: tailTerm, freshnessMode: "strict" }, missingProfiles());
+    assert.equal(tail.details.resultCount, 0);
+    assert.equal(tail.details.searchCoverage.body.indexedCharactersPerDocument, 1200);
+    assert.match(tail.text, /preview-only.*1200.*rg.*read/i);
+    assert.match(tail.details.controls.bodySearchCoverage.exhaustiveSearch, /suggestedRg.*read/i);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("filters are exact, typed profile values are checked, and validation diagnostics remain visible", async () => {
+  const root = await fixture();
+  const scope = {};
+  const registry = createArtifactProfileRegistryV1();
+  registry.register(scope, {
+    contractVersion: 1, id: "fixture.typed", kind: "artifact-profile",
+    owner: { packageName: "@fixture/typed", packageVersion: "1.0.0", packageRoot: "/fixture", registeredBy: "test" },
+    artifactKinds: [],
+    fields: [
+      { name: "attempts", type: "integer", indexed: true, filterable: true },
+      { name: "mode", type: "string", indexed: true, filterable: true, enumValues: ["safe", "fast"] },
+    ],
+    validators: [{ id: "diagnose", async validate(_context, request) {
+      return request.artifact.frontmatter.invalid === true
+        ? { outcome: "invalid", issues: [{ code: "fixture_invalid", summary: "fixture validation failed" }] }
+        : request.artifact.frontmatter.unavailable === true
+          ? { outcome: "unavailable", code: "fixture_unavailable", retryable: true }
+          : { outcome: "valid" };
+    } }],
+  });
+  try {
+    await put(root, "docs/one.md", "---\ncomponent: renderer\nattempts: 2\nmode: safe\ninvalid: true\n---\n# One\n");
+    await put(root, "docs/two.md", "---\ncomponent: rendering\nattempts: 3\nmode: fast\nunavailable: true\n---\n# Two\n");
+    const resolution = resolveArtifactProfilesV1(scope, registry);
+    const exact = await executeArtifactSearch(context(root), { filters: { component: "render" }, freshnessMode: "strict" }, resolution);
+    assert.equal(exact.details.resultCount, 0);
+    const typed = await executeArtifactSearch(context(root), { filters: { attempts: "2", mode: "safe" }, freshnessMode: "strict" }, resolution);
+    assert.deepEqual(typed.details.results.map((entry) => entry.path), ["docs/one.md"]);
+    assert.deepEqual(typed.details.results[0].profileValidation.map((entry) => entry.validation.outcome), ["invalid"]);
+    assert.equal(typed.details.validationDiagnostics.indexed.byOutcome.invalid, 1);
+    assert.equal(typed.details.validationDiagnostics.indexed.byOutcome.unavailable, 1);
+    assert.equal(typed.details.validationDiagnostics.indexed.diagnostics.length, 2);
+    await assert.rejects(executeArtifactSearch(context(root), { filters: { attempts: "two" }, freshnessMode: "strict" }, resolution), (error) => error.code === "filter_type_invalid");
+    await assert.rejects(executeArtifactSearch(context(root), { filters: { mode: "unsafe" }, freshnessMode: "strict" }, resolution), (error) => error.code === "filter_enum_invalid");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("profile-owned filters require applicable profile data, refresh dynamic profile state, and preserve generic Markdown filters", async () => {
+  const root = await fixture();
+  const scope = {};
+  const registry = createArtifactProfileRegistryV1();
+  let applies = true;
+  let outcome = "valid";
+  registry.register(scope, {
+    contractVersion: 1, id: "fixture.owned", kind: "artifact-profile",
+    owner: { packageName: "@fixture/owned", packageVersion: "1.0.0", packageRoot: "/fixture", registeredBy: "test" },
+    artifactKinds: [],
+    fields: [{ name: "owned_field", type: "string", indexed: true, filterable: true }],
+    validators: [{ id: "dynamic", async validate() {
+      return outcome === "valid" ? { outcome: "valid" } : { outcome: "invalid", issues: [{ code: "dynamic_invalid", summary: "external state changed" }] };
+    } }],
+    async appliesTo(_context, request) { return applies && !request.artifactPath?.endsWith("raw.md"); },
+  });
+  registry.register(scope, {
+    contractVersion: 1, id: "fixture.inactive-status", kind: "artifact-profile",
+    owner: { packageName: "@fixture/inactive-status", packageVersion: "1.0.0", packageRoot: "/fixture", registeredBy: "test" },
+    artifactKinds: [], fields: [{ name: "status", type: "string", indexed: true, filterable: true }], validators: [],
+    async appliesTo() { return false; },
+  });
+  try {
+    await put(root, "docs/owned.md", "---\nowned_field: yes\nstatus: review\npriority: urgent\nseverity: notice\n---\n# Owned\n");
+    await put(root, "docs/raw.md", "---\nowned_field: yes\n---\n# Raw\n");
+    const resolution = resolveArtifactProfilesV1(scope, registry);
+    const initial = await executeArtifactSearch(context(root), { freshnessMode: "strict" }, resolution);
+    assert.equal(initial.details.resultCount, 2, "generic unfiltered search must not require a profile");
+    assert.equal(initial.provenance.profiles.find((profile) => profile.profileId === "fixture.owned")?.decision, "applied");
+    assert.equal(initial.provenance.profiles.find((profile) => profile.profileId === "fixture.inactive-status")?.decision, "not_applicable");
+    const owned = await executeArtifactSearch(context(root), { filters: { owned_field: "yes" }, freshnessMode: "strict" }, resolution);
+    assert.deepEqual(owned.details.results.map((entry) => entry.path), ["docs/owned.md"], "raw frontmatter must not impersonate a profile field");
+    const generic = await executeArtifactSearch(context(root), { filters: { status: "review", priority: "urgent", severity: "notice" }, freshnessMode: "strict" }, resolution);
+    assert.deepEqual(generic.details.results.map((entry) => entry.path), ["docs/owned.md"]);
+
+    outcome = "invalid";
+    const invalid = await executeArtifactSearch(context(root), { freshnessMode: "strict" }, resolution);
+    assert.equal(invalid.details.refreshStats.updated, 1, "strict refresh must re-run unchanged Markdown validators");
+    assert.equal(invalid.details.validationDiagnostics.indexed.byOutcome.invalid, 1);
+
+    applies = false;
+    await assert.rejects(
+      executeArtifactSearch(context(root), { filters: { owned_field: "yes" }, freshnessMode: "strict" }, resolution),
+      (error) => error.code === "missing_profile",
+    );
+    const stable = await executeArtifactSearch(context(root), { freshnessMode: "strict" }, resolution);
+    assert.equal(stable.details.refreshed, false, "unchanged profile results should not rewrite the index");
+    assert.equal(stable.details.refreshStats.updated, 0);
+    assert.equal(stable.provenance.profiles.find((profile) => profile.profileId === "fixture.owned")?.decision, "not_applicable");
+    assert.equal(stable.details.controls.filters.fields.some((field) => field.name === "owned_field"), false, "non-applicable profile fields must not be exposed as controls");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("unqualified generic/profile and profile/profile field collisions are rejected", async () => {
+  const root = await fixture();
+  const scope = {};
+  const registry = createArtifactProfileRegistryV1();
+  const definition = (id, field) => ({
+    contractVersion: 1, id, kind: "artifact-profile",
+    owner: { packageName: `@fixture/${id}`, packageVersion: "1.0.0", packageRoot: "/fixture", registeredBy: "test" },
+    artifactKinds: [], fields: [{ name: field, type: "string", indexed: true, filterable: true }], validators: [],
+  });
+  registry.register(scope, definition("fixture.status", "status"));
+  registry.register(scope, definition("fixture.phase-a", "phase"));
+  registry.register(scope, definition("fixture.phase-b", "phase"));
+  try {
+    await put(root, "docs/collision.md", "---\nstatus: review\nphase: alpha\n---\n# Collision\n");
+    const resolution = resolveArtifactProfilesV1(scope, registry);
+    for (const field of ["status", "phase"]) {
+      await assert.rejects(
+        executeArtifactSearch(context(root), { filters: { [field]: field === "status" ? "review" : "alpha" }, freshnessMode: "strict" }, resolution),
+        (error) => error.code === "filter_ambiguous" && /unqualified field-name collision/.test(error.message),
+      );
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("concurrent rebuilds serialize through the owned index lock", async () => {
   const root = await fixture();
   try {

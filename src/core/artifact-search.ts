@@ -8,7 +8,7 @@ import type {
 } from "../contracts/v1/index.js";
 import type { RegistryRecord } from "@aefree/pi-capability-registry";
 import { buildOrRefreshIndex, type RefreshResult } from "./artifact-index.js";
-import { controlsFor, formatArtifactResults, groupByKind, searchArtifactIndex, suggestedRg } from "./artifact-query.js";
+import { BODY_PREVIEW_SEARCH_CHARS, controlsFor, formatArtifactResults, groupByKind, searchArtifactIndex, suggestedRg } from "./artifact-query.js";
 
 export const ARTIFACT_SEARCH_SERVICE_ID = "project-artifact-search.v1" as const;
 export const ARTIFACTS_PACKAGE_NAME = "@aefree/pi-project-artifacts" as const;
@@ -24,10 +24,14 @@ export async function executeArtifactSearch(
 ): Promise<ArtifactSearchResultV1> {
   const profiles = profileResolution.outcome === "available" ? profileResolution.records : [];
   const refresh = await buildOrRefreshIndex(request, context, profiles);
-  const query = searchArtifactIndex(refresh.index, request, profiles);
+  // Profiles remain in provenance even when no indexed artifact accepted them,
+  // but only actually applied profiles may define the live search surface.
+  const applicableProfiles = profiles.filter((profile) => Object.values(refresh.index.files).some((entry) => entry.profileData.some((data) => data.profileId === profile.id
+    && data.packageName === profile.owner.packageName && data.packageVersion === profile.owner.packageVersion)));
+  const query = searchArtifactIndex(refresh.index, request, applicableProfiles);
   const limit = Math.max(1, Math.min(request.limit ?? 20, 100));
   const returned = query.results.slice(0, limit);
-  const provenance = buildProvenance(request, profiles, profileResolution);
+  const provenance = buildProvenance(refresh.index, profiles, profileResolution);
   const text = formatArtifactResults(query, request, {
     indexPath: refresh.indexPath.replaceAll("\\", "/"),
     refreshed: refresh.refreshed,
@@ -56,14 +60,17 @@ export async function executeArtifactSearch(
       results: returned,
       groups: request.groupByKind ? groupByKind(returned) : undefined,
       suggestedRg: suggestedRg(request),
-      controls: controlsFor(request, query.allowedFilterFields),
+      searchCoverage: Object.freeze({ body: Object.freeze({ mode: "preview_only", indexedCharactersPerDocument: BODY_PREVIEW_SEARCH_CHARS, exhaustiveSearch: "Run suggestedRg and then read matching Markdown files directly; terms beyond the preview are not indexed." }) }),
+      fieldDefinitions: query.fieldDefinitions,
+      validationDiagnostics: validationDiagnostics(refresh.index, returned),
+      controls: controlsFor(request, query.fieldDefinitions),
     }),
     provenance,
   });
 }
 
 export function buildProvenance(
-  request: ArtifactSearchRequestV1,
+  index: RefreshResult["index"],
   profiles: readonly ArtifactProfileV1[],
   resolution: ArtifactProfileResolution,
 ): ArtifactExecutionProvenanceV1 {
@@ -72,7 +79,10 @@ export function buildProvenance(
     packageName: profile.owner.packageName,
     packageVersion: profile.owner.packageVersion,
     contractVersion: 1 as const,
-    decision: "applied" as const,
+    decision: Object.values(index.files).some((entry) => entry.profileData.some((data) => data.profileId === profile.id
+      && data.packageName === profile.owner.packageName && data.packageVersion === profile.owner.packageVersion))
+      ? "applied" as const
+      : "not_applicable" as const,
   })).sort((left, right) => left.profileId.localeCompare(right.profileId));
   const fallbacks: { code: string; action: "used" | "blocked" | "not_needed"; summary: string }[] = [];
   if (resolution.outcome === "missing") fallbacks.push({ code: "artifact_profiles_missing", action: "used", summary: "Generic artifact search continued without optional artifact profiles." });
@@ -87,6 +97,20 @@ export function buildProvenance(
     fallbacks: Object.freeze(fallbacks),
     executionGate: resolution.outcome === "duplicate" ? "blocked" : "executed",
   });
+}
+
+function validationDiagnostics(index: RefreshResult["index"], returned: readonly { path: string; profileValidation: readonly { profileId: string; packageName: string; packageVersion: string; validation: { outcome: string } }[] }[]): Readonly<Record<string, unknown>> {
+  const summarize = (entries: readonly { path: string; profileValidation: readonly { profileId: string; packageName: string; packageVersion: string; validation: { outcome: string } }[] }[]) => {
+    const byOutcome: Record<string, number> = { valid: 0, invalid: 0, conflict: 0, unavailable: 0, error: 0 };
+    const diagnostics: { path: string; profileId: string; packageName: string; packageVersion: string; outcome: string; validation: unknown }[] = [];
+    for (const entry of entries) for (const profile of entry.profileValidation) {
+      byOutcome[profile.validation.outcome] = (byOutcome[profile.validation.outcome] ?? 0) + 1;
+      if (profile.validation.outcome !== "valid") diagnostics.push({ path: entry.path, profileId: profile.profileId, packageName: profile.packageName, packageVersion: profile.packageVersion, outcome: profile.validation.outcome, validation: profile.validation });
+    }
+    diagnostics.sort((left, right) => left.path.localeCompare(right.path) || left.profileId.localeCompare(right.profileId));
+    return Object.freeze({ byOutcome: Object.freeze(byOutcome), diagnostics: Object.freeze(diagnostics) });
+  };
+  return Object.freeze({ indexed: summarize(Object.values(index.files).map((entry) => ({ path: entry.path, profileValidation: entry.profileData }))), returned: summarize(returned) });
 }
 
 export function requireComposableProfiles(resolution: ArtifactProfileResolution): void {

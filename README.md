@@ -1,13 +1,13 @@
 # @aefree/pi-project-artifacts
 
-Canonical project-local Markdown artifact search and deterministic file-todo lifecycle infrastructure for Pi.
+Canonical project-local Markdown discovery and deterministic file-todo lifecycle infrastructure for Pi. Project Markdown remains authoritative; indexes and tool output accelerate discovery but do not replace source evidence.
 
 ## Pi resources
 
-- tool: `project_artifact_search`
+- tools: `project_artifact_describe`, `project_artifact_search`
 - tools: `project_todo_validate`, `project_todo_list`, `project_todo_inspect`, `project_todo_allocate`, `project_todo_create`, `project_todo_transition`
 - prompt: `/memorize`
-- skills: `file-todos`, `grooming-project-artifacts`
+- skills: `using-project-artifacts`, `file-todos`, `grooming-project-artifacts`
 
 The package registers `ArtifactSearchServiceV1` and `TodoLifecycleServiceV1` per Pi session. It owns the side-effect-free artifact profile/service contracts under `@aefree/pi-project-artifacts/contracts/v1`; providers such as `pi-unity` register through those contracts in either load order.
 
@@ -32,14 +32,18 @@ Legacy `.compound-game-dev/artifact-index*.json` files are never read by default
 
 Index writes use process-local queues, schema-owned interprocess locks, exclusive temporary files, file sync, atomic replacement, orphan-temp cleanup, and structured stale/malformed-lock diagnostics. Locks carry random nonces; dead-owner reclamation and release first rename to a nonce-qualified quarantine and verify ownership before deletion.
 
-## Generic search and profiles
+## Documentation discovery and profiles
 
-`project_artifact_search` provides generic parse/index/filter/rank/freshness behavior without importing any domain package. Optional profiles add field definitions and validators.
+Markdown files under the resolved project roots are authoritative. `docs/plans/`, `docs/solutions/`, and `docs/memories/` are recognized optional conventions, not required roots or a restriction on other documentation. Solutions hold verified technical problem/resolution learnings; memories hold verified durable project knowledge that is not a solution. The package never creates these directories or artifacts automatically.
 
+Use `project_artifact_describe` to discover generic schemas and workspace-applicable profile availability before relying on a domain contract. Use `project_artifact_search` for generic parse/index/filter/rank/freshness candidate retrieval and visible validation diagnostics, then read the selected Markdown for final evidence.
+
+- The index stores only a body preview: body search/snippets are fast candidate signals, not exhaustive full-body or exact-match evidence. Use direct `rg` against source files for exhaustive, literal, or complete-occurrence searches.
+- YAML frontmatter is the fast path for known metadata: use exact `filters` values after schema discovery.
 - Generic unfiltered search continues when no profile is installed.
 - Generic fields (`status`, `priority`, `tags`, `module`, `component`, `severity`) remain available.
 - A filter whose field is defined only by a missing/incompatible profile throws `missing_profile`; it never guesses or returns an authoritative empty result.
-- Profile fields are filtered independently. Domain providers own compatibility semantics such as Unity v1 versus v2 classification.
+- Profile fields use exact filters and are validated independently. Domain providers own compatibility semantics such as Unity v1 versus v2 classification; `project_artifact_describe` exposes workspace-applicable schemas and profile availability, while `project_artifact_search` exposes validation diagnostics.
 
 ## Atomic file todos
 
@@ -83,4 +87,4 @@ npm test
 npm pack --dry-run
 ```
 
-Behavioral eval seeds live under `evals/file-todos/` and `evals/artifact-research/`; live model trials are opt-in and not part of `npm test`.
+Behavioral eval seeds live under `evals/file-todos/` and `evals/artifact-research/`; they cover baseline artifact-skill activation and safe search routing as well as todo behavior. Live model trials are opt-in and not part of `npm test`.
