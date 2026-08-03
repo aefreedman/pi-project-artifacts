@@ -14,6 +14,7 @@
 - `grooming-project-artifacts` skill for evidence-backed documentation and todo cleanup with explicit mutation authority and owning-migrator boundaries.
 - `/memorize` prompt for verified, deduplicated, owner-resolved project-learning capture targeted exclusively to the project's `solutions/` or `memories/` domain, without model/global-memory claims or a `/compound` compatibility alias.
 - Artifact/todo characterization, failure-injection, root-isolation, malformed-input, ordering, lock, atomicity, path, collision, Pi registration, and behavioral-eval fixtures, including baseline documentation-skill activation and search-routing seeds.
+- Public artifact-profile provider development guidance covering optional package composition, registry rendezvous, scoped lifecycle, conformance testing, and schema evolution.
 
 ### Changed
 

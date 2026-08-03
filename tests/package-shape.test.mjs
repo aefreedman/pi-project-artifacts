@@ -15,6 +15,7 @@ test("package exposes one canonical Pi extension, three package-owned skills, an
   assert.equal(manifest.bundledDependencies, undefined, "the shared kernel is co-installed instead of copied into nested provider tarballs");
   assert.equal(JSON.stringify(manifest).includes("file:../"), false);
   for (const resource of [
+    "docs/artifact-profile-providers.md",
     "prompts/memorize.md",
     "evals/memorize/cases.json",
     "evals/memorize/ownership-cases.json",
@@ -28,6 +29,7 @@ test("package exposes one canonical Pi extension, three package-owned skills, an
     "skills/file-todos/references/triage.md",
     "skills/file-todos/references/work-logs.md",
   ]) assert(existsSync(new URL(`../${resource}`, import.meta.url)), `Missing packaged skill resource: ${resource}`);
+  assert(manifest.files.includes("docs"), "public provider-development docs must be packed");
   assert.deepEqual(Object.keys(manifest.exports).sort(), [".", "./contracts", "./contracts/v1", "./contracts/v1/conformance", "./core", "./pi"]);
 });
 

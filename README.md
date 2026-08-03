@@ -9,7 +9,7 @@ Canonical project-local Markdown discovery and deterministic file-todo lifecycle
 - prompt: `/memorize`
 - skills: `using-project-artifacts`, `file-todos`, `grooming-project-artifacts`
 
-The package registers `ArtifactSearchServiceV1` and `TodoLifecycleServiceV1` per Pi session. It owns the side-effect-free artifact profile/service contracts under `@aefree/pi-project-artifacts/contracts/v1`; providers such as `pi-unity` register through those contracts in either load order.
+The package registers `ArtifactSearchServiceV1` and `TodoLifecycleServiceV1` per Pi session. It owns the side-effect-free artifact profile/service contracts under `@aefree/pi-project-artifacts/contracts/v1`; providers such as `pi-unity` register through those contracts in either load order. See [Developing artifact-profile providers](docs/artifact-profile-providers.md) for the optional-peer, runtime-rendezvous, lifecycle, conformance, and schema-evolution contract.
 
 `/memorize` persists one verified reusable learning as authoritative project Markdown in either the project's `solutions/` domain (verified technical problem/resolution) or `memories/` domain (verified durable non-solution knowledge). Invocation authorizes only one resolved artifact creation or focused update; evidence, duplicate detection, destination resolution, profile constraints, and post-write validation remain mandatory. It never routes output to another artifact class or claims model, session, or global user memory.
 
