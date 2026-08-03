@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { ArtifactFieldDefinitionV1, ArtifactProfileV1, ArtifactSearchRequestV1 } from "../contracts/v1/index.js";
-import { safeFrontmatterForDisplay, type ArtifactIndexEntryV1, type ArtifactIndexV1, type ArtifactKind, type ProfileEntryData, type SearchField } from "./artifact-index.js";
+import { safeFrontmatterForDisplay, type ArtifactCacheState, type ArtifactIndexEntryV1, type ArtifactIndexV1, type ArtifactKind, type FreshnessMode, type ProfileEntryData, type SearchField } from "./artifact-index.js";
 import { ProjectArtifactError } from "./errors.js";
 import { stringValues } from "./markdown.js";
 
@@ -102,11 +102,14 @@ export function searchArtifactIndex(index: ArtifactIndexV1, request: ArtifactSea
   return Object.freeze({ results: Object.freeze(prepared), totalMatches, preparedMatches: prepared.length, fieldDefinitions });
 }
 
-export function formatArtifactResults(result: ArtifactQueryResult, request: ArtifactSearchRequestV1, metadata: { indexPath: string; refreshed: boolean; stats: { added: number; updated: number; removed: number; unchanged: number }; totalFiles: number }): string {
+export function formatArtifactResults(result: ArtifactQueryResult, request: ArtifactSearchRequestV1, metadata: { indexPath: string; cacheState: ArtifactCacheState; freshnessMode: FreshnessMode; stats: { added: number; updated: number; removed: number; unchanged: number }; totalFiles: number }): string {
   const limit = Math.max(1, Math.min(request.limit ?? DEFAULT_LIMIT, 100));
   const shown = result.results.slice(0, limit);
   const detailed = request.outputMode === "detailed";
-  const state = metadata.refreshed ? "refreshed" : "fresh";
+  const state = metadata.cacheState === "auto_fast_path" ? "cache reused (auto TTL fast path)"
+    : metadata.cacheState === "memory_fast_path" ? "cache reused (memory fast path)"
+      : metadata.cacheState === "validated_unchanged" ? `validated unchanged (${metadata.freshnessMode})`
+        : `rebuilt (${metadata.freshnessMode})`;
   const changes = `+${metadata.stats.added}/~${metadata.stats.updated}/-${metadata.stats.removed}`;
   const indexSummary = detailed ? `Index: ${metadata.indexPath} (${state}; ${metadata.totalFiles} files, ${changes})` : `Index ${state}; files=${metadata.totalFiles}; changes=${changes}.`;
   const lines = [`${result.totalMatches} matching artifact${result.totalMatches === 1 ? "" : "s"}; showing ${shown.length}. ${indexSummary}`];

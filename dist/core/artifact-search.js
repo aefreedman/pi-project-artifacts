@@ -1,4 +1,4 @@
-import { buildOrRefreshIndex, observedFieldCatalog } from "./artifact-index.js";
+import { artifactCacheState, buildOrRefreshIndex, observedFieldCatalog } from "./artifact-index.js";
 import { BODY_PREVIEW_SEARCH_CHARS, controlsFor, describeArtifactFields, formatArtifactResults, groupByKind, searchArtifactIndex, suggestedRg } from "./artifact-query.js";
 export const ARTIFACT_SEARCH_SERVICE_ID = "project-artifact-search.v1";
 export const ARTIFACTS_PACKAGE_NAME = "@aefree/pi-project-artifacts";
@@ -12,9 +12,11 @@ export async function executeArtifactSearch(context, request, profileResolution)
     const limit = Math.max(1, Math.min(request.limit ?? 20, 100));
     const returned = query.results.slice(0, limit);
     const provenance = buildProvenance(refresh.index, profiles, profileResolution);
+    const cacheState = artifactCacheState(refresh);
     const text = formatArtifactResults(query, request, {
         indexPath: refresh.indexPath.replaceAll("\\", "/"),
-        refreshed: refresh.refreshed,
+        cacheState,
+        freshnessMode: refresh.freshnessMode,
         stats: refresh.stats,
         totalFiles: Object.keys(refresh.index.files).length,
     });
@@ -29,6 +31,7 @@ export async function executeArtifactSearch(context, request, profileResolution)
             indexPath: refresh.indexPath.replaceAll("\\", "/"),
             refreshed: refresh.refreshed,
             fastPath: refresh.fastPath,
+            cacheState,
             freshnessMode: refresh.freshnessMode,
             refreshStats: refresh.stats,
             rootIdentity: refresh.index.rootIdentity,
@@ -111,6 +114,9 @@ export async function describeArtifactWorkspace(context, request, profileResolut
         observedFieldCatalog: observedFieldCatalog(refresh.index),
         indexPath: refresh.indexPath.replaceAll("\\", "/"),
         refreshed: refresh.refreshed,
+        fastPath: refresh.fastPath,
+        cacheState: artifactCacheState(refresh),
+        freshnessMode: refresh.freshnessMode,
         refreshStats: refresh.stats,
     });
 }

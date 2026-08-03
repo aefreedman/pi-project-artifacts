@@ -95,7 +95,7 @@ export default function registerProjectArtifacts(pi) {
         ],
         parameters: SEARCH_PARAMETERS,
         async execute(toolCallId, params, signal, onUpdate, ctx) {
-            onUpdate?.({ content: [{ type: "text", text: "Refreshing canonical project artifact index..." }], details: {} });
+            onUpdate?.({ content: [{ type: "text", text: "Loading canonical project artifact index..." }], details: {} });
             const service = requireSearchService(ctx);
             const result = await service.search(executionContext(ctx, signal, toolCallId), params);
             return { content: [{ type: "text", text: result.text }], details: { ...result.details, provenance: result.provenance } };

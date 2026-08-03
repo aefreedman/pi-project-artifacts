@@ -34,7 +34,15 @@ Derived indexes use:
 <workspace>/.pi-project-artifacts/index-v1-<label>-<hash>.json
 ```
 
-The v1 envelope identifies its schema, workspace/docs/todos physical roots, stable root identity, contributing profiles, content hashes, and complete entries. Strict refresh detects add/update/delete and external edits. Auto mode uses dirty tracking plus a bounded TTL; memory mode deliberately trusts the loaded index.
+The v1 envelope identifies its schema, workspace/docs/todos physical roots, stable root identity, contributing profiles, content hashes, and complete entries. Strict refresh detects add/update/delete and external edits. Auto mode uses dirty tracking plus a bounded TTL; memory mode deliberately trusts the loaded index. Search details expose `cacheState` as `auto_fast_path`, `memory_fast_path`, `validated_unchanged`, or `rebuilt`, and the text summary names the corresponding behavior.
+
+The index is disposable cache data rather than project documentation. Consumer projects should normally add only its generated directory to `.gitignore`:
+
+```gitignore
+.pi-project-artifacts/
+```
+
+Do not ignore authoritative `docs/` or `todos/` Markdown.
 
 Pre-existing `.compound-game-dev/artifact-index*.json` files are never read by default, imported, moved, or deleted. An explicit occupied `indexPath` is replaced only when absent or when its entire recognized project-artifact envelope validates. Unrelated JSON, malformed envelopes, authoritative-root overlap, and physical symlink/junction escapes fail closed.
 

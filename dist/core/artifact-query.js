@@ -76,7 +76,10 @@ export function formatArtifactResults(result, request, metadata) {
     const limit = Math.max(1, Math.min(request.limit ?? DEFAULT_LIMIT, 100));
     const shown = result.results.slice(0, limit);
     const detailed = request.outputMode === "detailed";
-    const state = metadata.refreshed ? "refreshed" : "fresh";
+    const state = metadata.cacheState === "auto_fast_path" ? "cache reused (auto TTL fast path)"
+        : metadata.cacheState === "memory_fast_path" ? "cache reused (memory fast path)"
+            : metadata.cacheState === "validated_unchanged" ? `validated unchanged (${metadata.freshnessMode})`
+                : `rebuilt (${metadata.freshnessMode})`;
     const changes = `+${metadata.stats.added}/~${metadata.stats.updated}/-${metadata.stats.removed}`;
     const indexSummary = detailed ? `Index: ${metadata.indexPath} (${state}; ${metadata.totalFiles} files, ${changes})` : `Index ${state}; files=${metadata.totalFiles}; changes=${changes}.`;
     const lines = [`${result.totalMatches} matching artifact${result.totalMatches === 1 ? "" : "s"}; showing ${shown.length}. ${indexSummary}`];

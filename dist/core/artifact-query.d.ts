@@ -1,5 +1,5 @@
 import type { ArtifactFieldDefinitionV1, ArtifactProfileV1, ArtifactSearchRequestV1 } from "../contracts/v1/index.js";
-import { type ArtifactIndexV1, type ArtifactKind, type ProfileEntryData } from "./artifact-index.js";
+import { type ArtifactCacheState, type ArtifactIndexV1, type ArtifactKind, type FreshnessMode, type ProfileEntryData } from "./artifact-index.js";
 export declare const BODY_PREVIEW_SEARCH_CHARS = 1200;
 export type ArtifactFieldDescription = Readonly<{
     name: string;
@@ -52,7 +52,8 @@ export declare function describeArtifactFields(profiles: readonly ArtifactProfil
 export declare function searchArtifactIndex(index: ArtifactIndexV1, request: ArtifactSearchRequestV1, profiles: readonly ArtifactProfileV1[]): ArtifactQueryResult;
 export declare function formatArtifactResults(result: ArtifactQueryResult, request: ArtifactSearchRequestV1, metadata: {
     indexPath: string;
-    refreshed: boolean;
+    cacheState: ArtifactCacheState;
+    freshnessMode: FreshnessMode;
     stats: {
         added: number;
         updated: number;

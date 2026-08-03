@@ -1,5 +1,5 @@
 import type { ArtifactExecutionContextV1, ArtifactExecutionProvenanceV1, ArtifactProfileV1, ArtifactSearchRequestV1, ArtifactSearchResultV1, ContractResolutionV1 } from "../contracts/v1/index.js";
-import { type IndexRequest, type ObservedFieldCatalog, type RefreshResult } from "./artifact-index.js";
+import { type ArtifactCacheState, type IndexRequest, type ObservedFieldCatalog, type RefreshResult } from "./artifact-index.js";
 import { type ArtifactFieldDescription } from "./artifact-query.js";
 export declare const ARTIFACT_SEARCH_SERVICE_ID: "project-artifact-search.v1";
 export declare const ARTIFACTS_PACKAGE_NAME: "@aefree/pi-project-artifacts";
@@ -21,6 +21,9 @@ export type ArtifactWorkspaceDescription = Readonly<{
     observedFieldCatalog: ObservedFieldCatalog;
     indexPath: string;
     refreshed: boolean;
+    fastPath: boolean;
+    cacheState: ArtifactCacheState;
+    freshnessMode: RefreshResult["freshnessMode"];
     refreshStats: RefreshResult["stats"];
 }>;
 /** Canonical describe path: use the same contained, disposable index as search. */

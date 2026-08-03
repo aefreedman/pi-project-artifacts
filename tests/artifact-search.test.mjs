@@ -37,6 +37,34 @@ test("canonical index rebuilds add/update/delete and leaves legacy cache untouch
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("auto TTL, expiry, and memory modes report distinct cache states", async () => {
+  const root = await fixture();
+  try {
+    await put(root, "docs/cache.md", "# Cache\n\ncache-state-needle\n");
+    const initial = await executeArtifactSearch(context(root), { query: "cache-state-needle", freshnessMode: "strict" }, missingProfiles());
+    assert.equal(initial.details.cacheState, "rebuilt");
+    assert.equal(initial.details.fastPath, false);
+    assert.match(initial.text, /Index rebuilt \(strict\)/);
+
+    const auto = await executeArtifactSearch(context(root), { query: "cache-state-needle", freshnessMode: "auto", freshnessTtlMs: 60_000 }, missingProfiles());
+    assert.equal(auto.details.cacheState, "auto_fast_path");
+    assert.equal(auto.details.fastPath, true);
+    assert.match(auto.text, /cache reused \(auto TTL fast path\)/);
+
+    const memory = await executeArtifactSearch(context(root), { query: "cache-state-needle", freshnessMode: "memory" }, missingProfiles());
+    assert.equal(memory.details.cacheState, "memory_fast_path");
+    assert.equal(memory.details.fastPath, true);
+    assert.match(memory.text, /cache reused \(memory fast path\)/);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const expired = await executeArtifactSearch(context(root), { query: "cache-state-needle", freshnessMode: "auto", freshnessTtlMs: 0 }, missingProfiles());
+    assert.equal(expired.details.cacheState, "validated_unchanged");
+    assert.equal(expired.details.fastPath, false);
+    assert.equal(expired.details.refreshed, false);
+    assert.match(expired.text, /validated unchanged \(auto\)/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("legacy artifact-search ranking, status, body, related, limit, and dirty-refresh behavior is characterized", async () => {
   const root = await fixture();
   try {
@@ -68,6 +96,8 @@ test("legacy artifact-search ranking, status, body, related, limit, and dirty-re
     trackArtifactToolResult({ toolName: "write", input: { path: "docs/dirty.md" } }, root);
     const dirty = await executeArtifactSearch(context(root), { query: "afterchange", freshnessMode: "auto", freshnessTtlMs: 60000 }, missingProfiles());
     assert.equal(dirty.details.refreshed, true);
+    assert.equal(dirty.details.fastPath, false);
+    assert.equal(dirty.details.cacheState, "rebuilt");
     assert.equal(dirty.details.resultCount, 1);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

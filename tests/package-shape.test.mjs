@@ -36,6 +36,12 @@ test("package exposes one canonical Pi extension, three package-owned skills, an
   assert.deepEqual(Object.keys(manifest.exports).sort(), [".", "./contracts", "./contracts/v1", "./contracts/v1/conformance", "./core", "./pi"]);
 });
 
+test("consumer docs identify disposable cache data without hiding authoritative Markdown", () => {
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  assert.match(readme, /\.pi-project-artifacts\//);
+  assert.match(readme, /Do not ignore authoritative `docs\/` or `todos\/` Markdown/);
+});
+
 test("runtime dependencies resolve from publishable package sources", () => {
   const registry = lockfile.packages["node_modules/@aefree/pi-capability-registry"];
   assert.equal(registry.version, "0.1.0");

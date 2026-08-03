@@ -10,6 +10,11 @@ export const ARTIFACT_INDEX_SCHEMA = "@aefree/pi-project-artifacts/index";
 export const ARTIFACT_INDEX_VERSION = 1;
 const BODY_PREVIEW_CHARS = 1_200;
 const DEFAULT_FRESHNESS_TTL_MS = 30_000;
+export function artifactCacheState(refresh) {
+    if (refresh.fastPath)
+        return refresh.freshnessMode === "memory" ? "memory_fast_path" : "auto_fast_path";
+    return refresh.refreshed ? "rebuilt" : "validated_unchanged";
+}
 const memoryCache = new Map();
 const dirtyIndexes = new Set();
 const activeRoots = new Map();

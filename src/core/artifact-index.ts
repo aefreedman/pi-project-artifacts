@@ -58,6 +58,13 @@ export type RefreshResult = Readonly<{
   stats: RefreshStats;
   orphanTempsRemoved: readonly string[];
 }>;
+export type ArtifactCacheState = "auto_fast_path" | "memory_fast_path" | "validated_unchanged" | "rebuilt";
+
+export function artifactCacheState(refresh: Pick<RefreshResult, "fastPath" | "freshnessMode" | "refreshed">): ArtifactCacheState {
+  if (refresh.fastPath) return refresh.freshnessMode === "memory" ? "memory_fast_path" : "auto_fast_path";
+  return refresh.refreshed ? "rebuilt" : "validated_unchanged";
+}
+
 export type IndexRequest = Readonly<{
   workspaceRoot?: string;
   docsRoot?: string;

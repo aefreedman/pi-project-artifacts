@@ -65,8 +65,8 @@ async function workspace() {
 }
 
 function context(scope, cwd) { return { sessionManager: scope, cwd }; }
-async function search(pi, scope, cwd, params, signal = new AbortController().signal) {
-  return await pi.tools.get("project_artifact_search").execute("tool-call", { freshnessMode: "strict", ...params }, signal, undefined, context(scope, cwd));
+async function search(pi, scope, cwd, params, signal = new AbortController().signal, onUpdate) {
+  return await pi.tools.get("project_artifact_search").execute("tool-call", { freshnessMode: "strict", ...params }, signal, onUpdate, context(scope, cwd));
 }
 
 test("profile provider loaded before the Pi adapter is resolved for that invocation", async () => {
@@ -78,8 +78,11 @@ test("profile provider loaded before the Pi adapter is resolved for that invocat
     registerProjectArtifacts(pi);
     await pi.emit("session_start", context(scope, root));
 
-    const result = await search(pi, scope, root, { filters: { provider_first: "yes" } });
+    const updates = [];
+    const result = await search(pi, scope, root, { filters: { provider_first: "yes" } }, new AbortController().signal, (update) => updates.push(update));
+    assert.deepEqual(updates.map((update) => update.content[0].text), ["Loading canonical project artifact index..."]);
     assert.deepEqual(result.details.provenance.profiles.map((item) => item.profileId), ["fixture.provider-first"]);
+    assert.equal(result.details.cacheState, "rebuilt");
     assert.equal(result.details.results.length, 1);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
@@ -108,6 +111,9 @@ test("artifact describe exposes only workspace-applicable schemas with a fresh i
     assert.deepEqual(generic.enumValues, []);
     assert.equal(result.details.fields.some((field) => field.name === "hidden"), false);
     assert.equal(result.details.workspaceRoot, root.replaceAll("\\", "/"));
+    assert.equal(result.details.cacheState, "rebuilt");
+    assert.equal(result.details.fastPath, false);
+    assert.equal(result.details.freshnessMode, "auto");
     assert.deepEqual(result.details.profileAvailability.map((entry) => [entry.profileId, entry.decision]), [["fixture.not-applicable", "not_applicable"], ["fixture.schema", "applied"]]);
     assert.equal(seen.length, 1);
     assert.equal(seen[0].signal, controller.signal);

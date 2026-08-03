@@ -7,7 +7,7 @@ import type {
   ContractResolutionV1,
 } from "../contracts/v1/index.js";
 import type { RegistryRecord } from "@aefree/pi-capability-registry";
-import { buildOrRefreshIndex, observedFieldCatalog, type IndexRequest, type ObservedFieldCatalog, type RefreshResult } from "./artifact-index.js";
+import { artifactCacheState, buildOrRefreshIndex, observedFieldCatalog, type ArtifactCacheState, type IndexRequest, type ObservedFieldCatalog, type RefreshResult } from "./artifact-index.js";
 import { BODY_PREVIEW_SEARCH_CHARS, controlsFor, describeArtifactFields, formatArtifactResults, groupByKind, searchArtifactIndex, suggestedRg, type ArtifactFieldDescription } from "./artifact-query.js";
 
 export const ARTIFACT_SEARCH_SERVICE_ID = "project-artifact-search.v1" as const;
@@ -29,9 +29,11 @@ export async function executeArtifactSearch(
   const limit = Math.max(1, Math.min(request.limit ?? 20, 100));
   const returned = query.results.slice(0, limit);
   const provenance = buildProvenance(refresh.index, profiles, profileResolution);
+  const cacheState = artifactCacheState(refresh);
   const text = formatArtifactResults(query, request, {
     indexPath: refresh.indexPath.replaceAll("\\", "/"),
-    refreshed: refresh.refreshed,
+    cacheState,
+    freshnessMode: refresh.freshnessMode,
     stats: refresh.stats,
     totalFiles: Object.keys(refresh.index.files).length,
   });
@@ -46,6 +48,7 @@ export async function executeArtifactSearch(
       indexPath: refresh.indexPath.replaceAll("\\", "/"),
       refreshed: refresh.refreshed,
       fastPath: refresh.fastPath,
+      cacheState,
       freshnessMode: refresh.freshnessMode,
       refreshStats: refresh.stats,
       rootIdentity: refresh.index.rootIdentity,
@@ -119,6 +122,9 @@ export type ArtifactWorkspaceDescription = Readonly<{
   observedFieldCatalog: ObservedFieldCatalog;
   indexPath: string;
   refreshed: boolean;
+  fastPath: boolean;
+  cacheState: ArtifactCacheState;
+  freshnessMode: RefreshResult["freshnessMode"];
   refreshStats: RefreshResult["stats"];
 }>;
 
@@ -144,6 +150,9 @@ export async function describeArtifactWorkspace(
     observedFieldCatalog: observedFieldCatalog(refresh.index),
     indexPath: refresh.indexPath.replaceAll("\\", "/"),
     refreshed: refresh.refreshed,
+    fastPath: refresh.fastPath,
+    cacheState: artifactCacheState(refresh),
+    freshnessMode: refresh.freshnessMode,
     refreshStats: refresh.stats,
   });
 }
