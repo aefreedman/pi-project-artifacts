@@ -12,6 +12,8 @@ test("package exposes one canonical Pi extension, three package-owned skills, an
   assert.deepEqual(manifest.pi.skills, ["./skills"]);
   assert.equal(manifest.sideEffects, false);
   assert.equal(manifest.dependencies["@aefree/pi-capability-registry"], "^0.1.0");
+  assert.equal(manifest.peerDependencies["@earendil-works/pi-tui"], "*");
+  assert.equal(manifest.peerDependenciesMeta["@earendil-works/pi-tui"].optional, true);
   assert.equal(manifest.bundledDependencies, undefined, "the shared kernel is co-installed instead of copied into nested provider tarballs");
   assert.equal(JSON.stringify(manifest).includes("file:../"), false);
   for (const resource of [

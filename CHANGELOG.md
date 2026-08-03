@@ -10,6 +10,7 @@
 - Bounded, privacy-safe observed-field catalogs with counts, inferred primitive types, distinct counts, and credential-suppressed samples.
 - Preview-based body indexing with explicit direct-`rg` and source-read guidance for exhaustive or final evidence.
 - Explicit cache-state reporting for auto-TTL reuse, memory reuse, unchanged validation scans, and rebuilds, plus consumer `.gitignore` guidance for disposable indexes.
+- Compact default TUI rendering for artifact and todo tool results, with full output available through Pi's standard expanded-tool toggle.
 - Canonical index-v1 refresh, deterministic ranking and formatting, stable root identity, physical containment, owned locking, orphan cleanup, and atomic cache writes under `.pi-project-artifacts/`.
 - Deterministic `project_todo_validate`, `project_todo_list`, `project_todo_inspect`, `project_todo_allocate`, `project_todo_create`, and `project_todo_transition` tools.
 - Locked and hash-guarded todo allocation, exclusive creation, external-edit detection, durable transition recovery, rollback, collision diagnostics, and non-mutating handling of pre-existing conflicts.

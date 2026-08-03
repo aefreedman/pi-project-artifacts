@@ -1,5 +1,6 @@
 import { StringEnum } from "@earendil-works/pi-ai";
-import { withFileMutationQueue, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { keyHint, withFileMutationQueue, type AgentToolResult, type ExtensionAPI, type ExtensionContext, type Theme, type ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import * as path from "node:path";
 import type { RegistrationToken } from "@aefree/pi-capability-registry";
@@ -17,6 +18,8 @@ import { createArtifactSearchServiceV1, createTodoLifecycleServiceV1 } from "../
 import { bindArtifactExecutionScopeV1 } from "../core/execution-context.js";
 import { trackArtifactToolResult } from "../core/artifact-index.js";
 import { ProjectArtifactError } from "../core/errors.js";
+
+type ResultRenderContext = Readonly<{ isError?: boolean }>;
 
 const STRING_OR_ARRAY = Type.Union([Type.String(), Type.Array(Type.String())]);
 const FILTER_VALUES = Type.Union([Type.String(), Type.Array(Type.String())]);
@@ -104,6 +107,7 @@ export default function registerProjectArtifacts(pi: ExtensionAPI): void {
       "Do not edit .pi-project-artifacts indexes manually; they are disposable derived state.",
     ],
     parameters: SEARCH_PARAMETERS,
+    renderResult: renderArtifactSearchResult,
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       onUpdate?.({ content: [{ type: "text", text: "Loading canonical project artifact index..." }], details: {} });
       const service = requireSearchService(ctx);
@@ -119,6 +123,7 @@ export default function registerProjectArtifacts(pi: ExtensionAPI): void {
     promptSnippet: "Discover project-artifact schemas and observed raw metadata before filtering.",
     promptGuidelines: ["Use project_artifact_describe to discover registered schemas, workspace profile availability, and observed exact raw metadata fields."],
     parameters: DESCRIBE_PARAMETERS,
+    renderResult: renderArtifactDescribeResult,
     async execute(toolCallId, params, signal, _onUpdate, ctx) {
       const service = requireSearchService(ctx);
       if (service.describe === undefined) throw new ProjectArtifactError("describe_unavailable", "The canonical ArtifactSearchServiceV1 does not implement observed-metadata describe. Start a fresh session with @aefree/pi-project-artifacts.");
@@ -153,6 +158,7 @@ export default function registerProjectArtifacts(pi: ExtensionAPI): void {
       frontmatter: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Additional data-only frontmatter. Canonical identity/path/hash keys are forbidden by the v1 contract." })),
       expectedDirectoryHash: Type.Optional(Type.String({ pattern: "^sha256:[a-f0-9]{64}$" })),
     }),
+    renderResult: renderTodoResult,
     async execute(_id, params, signal, _onUpdate, ctx) {
       const root = normalizedRootParams(ctx, params);
       const request: TodoLifecycleRequestV1 = {
@@ -177,6 +183,7 @@ export default function registerProjectArtifacts(pi: ExtensionAPI): void {
       toStatus: StringEnum(["pending", "ready", "complete"] as const),
       expectedContentHash: Type.String({ pattern: "^sha256:[a-f0-9]{64}$" }),
     }),
+    renderResult: renderTodoResult,
     async execute(_id, params, signal, _onUpdate, ctx) {
       const root = normalizedRootParams(ctx, params);
       const source = resolveTarget(root.workspaceRoot, params.path);
@@ -195,6 +202,7 @@ function registerTodoReadTool(pi: ExtensionAPI, name: string, label: string, des
     label,
     description,
     parameters: Type.Object(fields),
+    renderResult: renderTodoResult,
     async execute(_id, params: Record<string, unknown>, signal, _onUpdate, ctx) {
       const root = normalizedRootParams(ctx, params as { workspaceRoot?: string; todosRoot?: string });
       const request = operation === "list"
@@ -206,6 +214,83 @@ function registerTodoReadTool(pi: ExtensionAPI, name: string, label: string, des
     },
   });
 }
+function renderArtifactSearchResult(result: AgentToolResult<unknown>, options: ToolRenderResultOptions, theme: Theme, context: ResultRenderContext) {
+  const details = asRecord(result.details);
+  const returned = numeric(details.returnedResultCount);
+  const matched = numeric(details.resultCount);
+  const count = returned ?? matched ?? 0;
+  const matchSummary = matched !== undefined && matched > count ? `${count} of ${matched} artifacts returned` : `${count} artifact${count === 1 ? "" : "s"} returned`;
+  const cache = cacheStateLabel(details.cacheState);
+  return expandableToolResult(result, options, theme, `${matchSummary}${cache ? ` · ${cache}` : ""}`, "success", context);
+}
+
+function renderArtifactDescribeResult(result: AgentToolResult<unknown>, options: ToolRenderResultOptions, theme: Theme, context: ResultRenderContext) {
+  const details = asRecord(result.details);
+  const fields = Array.isArray(details.fields) ? details.fields.length : 0;
+  const observed = asRecord(details.observedFieldCatalog);
+  const observedFields = Array.isArray(observed.fields) ? observed.fields.length : 0;
+  const cache = cacheStateLabel(details.cacheState);
+  return expandableToolResult(result, options, theme, `${fields} field definitions · ${observedFields} observed fields${cache ? ` · ${cache}` : ""}`, "success", context);
+}
+
+function renderTodoResult(result: AgentToolResult<unknown>, options: ToolRenderResultOptions, theme: Theme, context: ResultRenderContext) {
+  const lifecycle = asRecord(asRecord(result.details).result);
+  const outcome = typeof lifecycle.outcome === "string" ? lifecycle.outcome : "completed";
+  let summary: string;
+  if (outcome === "listed") {
+    const todos = Array.isArray(lifecycle.todos) ? lifecycle.todos.length : 0;
+    const issues = Array.isArray(lifecycle.issues) ? lifecycle.issues.length : 0;
+    summary = `${todos} todo${todos === 1 ? "" : "s"} listed${issues ? ` · ${issues} issue${issues === 1 ? "" : "s"}` : ""}`;
+  } else if (outcome === "inspected") {
+    summary = `Inspected ${todoBasename(lifecycle.todo)}`;
+  } else if (outcome === "allocated") {
+    summary = `Allocated todo ${String(lifecycle.renderedId ?? lifecycle.issueId ?? "ID")}`;
+  } else if (outcome === "created") {
+    summary = `Created ${todoBasename(lifecycle.todo)}`;
+  } else if (outcome === "transitioned") {
+    summary = `Transitioned ${todoBasename(lifecycle.todo)}`;
+  } else if (outcome === "conflict" || outcome === "blocked") {
+    summary = `${outcome === "conflict" ? "Conflict" : "Blocked"}: ${String(lifecycle.summary ?? lifecycle.code ?? "todo lifecycle did not complete")}`;
+  } else {
+    summary = `Todo lifecycle ${outcome}`;
+  }
+  return expandableToolResult(result, options, theme, summary, outcome === "conflict" || outcome === "blocked" ? "warning" : "success", context);
+}
+
+function expandableToolResult(
+  result: AgentToolResult<unknown>,
+  options: ToolRenderResultOptions,
+  theme: Theme,
+  summary: string,
+  color: "success" | "warning" = "success",
+  context?: ResultRenderContext,
+): Text {
+  const fullText = result.content.flatMap((entry) => entry.type === "text" ? [entry.text] : []).join("\n");
+  if (options.isPartial || options.expanded) return new Text(fullText || summary, 0, 0);
+  const hint = keyHint("app.tools.expand", "to expand");
+  if (context?.isError) {
+    const firstLine = (fullText.split(/\r?\n/u, 1)[0] || "Tool execution failed").slice(0, 240);
+    return new Text(`${theme.fg("error", "✗ ")}${theme.fg("muted", firstLine)} ${theme.fg("dim", `(${hint})`)}`, 0, 0);
+  }
+  return new Text(`${theme.fg(color, color === "success" ? "✓ " : "⚠ ")}${theme.fg("muted", summary)} ${theme.fg("dim", `(${hint})`)}`, 0, 0);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+function numeric(value: unknown): number | undefined { return typeof value === "number" && Number.isFinite(value) ? value : undefined; }
+function todoBasename(value: unknown): string {
+  const todo = asRecord(value);
+  return typeof todo.path === "string" ? path.basename(todo.path) : "todo";
+}
+function cacheStateLabel(value: unknown): string | undefined {
+  if (value === "auto_fast_path") return "cache reused";
+  if (value === "memory_fast_path") return "memory cache reused";
+  if (value === "validated_unchanged") return "cache validated";
+  if (value === "rebuilt") return "cache rebuilt";
+  return undefined;
+}
+
 function requireSearchService(ctx: ExtensionContext) {
   const resolved = resolveArtifactSearchServiceV1(ctx.sessionManager);
   if (resolved.outcome !== "available") throw new ProjectArtifactError(resolved.code, "Canonical ArtifactSearchServiceV1 is unavailable. Install/enable @aefree/pi-project-artifacts and start a fresh session.", { registryKey: resolved.registryKey, providerIds: resolved.providerIds });

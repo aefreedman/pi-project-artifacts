@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import registerProjectArtifacts from "../dist/pi/index.js";
 import {
   ARTIFACT_PROFILE_REGISTRY_KEY_V1,
@@ -11,6 +12,8 @@ import {
   createArtifactProfileRegistryV1,
   resolveArtifactSearchServiceV1,
 } from "../dist/contracts/v1/index.js";
+
+initTheme("dark", false);
 
 class FakePi {
   handlers = new Map();
@@ -68,6 +71,44 @@ function context(scope, cwd) { return { sessionManager: scope, cwd }; }
 async function search(pi, scope, cwd, params, signal = new AbortController().signal, onUpdate) {
   return await pi.tools.get("project_artifact_search").execute("tool-call", { freshnessMode: "strict", ...params }, signal, onUpdate, context(scope, cwd));
 }
+
+test("tool results stay compact until Pi's expanded view is toggled", async () => {
+  const root = await workspace();
+  try {
+    const scope = {};
+    const pi = new FakePi();
+    registerProjectArtifacts(pi);
+    await pi.emit("session_start", context(scope, root));
+    const theme = { fg: (_color, text) => text };
+    const render = (tool, result, expanded) => tool.renderResult(result, { expanded, isPartial: false }, theme, {}).render(240).join("\n");
+
+    assert([...pi.tools.values()].every((tool) => typeof tool.renderResult === "function"));
+
+    const searchTool = pi.tools.get("project_artifact_search");
+    const searchResult = await search(pi, scope, root, {});
+    const collapsedSearch = render(searchTool, searchResult, false);
+    assert.match(collapsedSearch, /1 artifact returned/);
+    assert.match(collapsedSearch, /to expand/);
+    assert.equal(collapsedSearch.includes("docs/note.md"), false);
+    assert.match(render(searchTool, searchResult, true), /docs\/note\.md/);
+
+    const describeTool = pi.tools.get("project_artifact_describe");
+    const describeResult = await describeTool.execute("describe", { workspaceRoot: root }, new AbortController().signal, undefined, context(scope, root));
+    const collapsedDescribe = render(describeTool, describeResult, false);
+    assert.match(collapsedDescribe, /field definitions/);
+    assert.equal(collapsedDescribe.includes('"observedFieldCatalog"'), false);
+    assert.match(render(describeTool, describeResult, true), /"observedFieldCatalog"/);
+
+    const todoTool = pi.tools.get("project_todo_list");
+    const todoResult = {
+      content: [{ type: "text", text: JSON.stringify({ outcome: "listed", todos: [{ path: "todos/001-ready-p2-task.md" }], issues: [] }, null, 2) }],
+      details: { result: { outcome: "listed", todos: [{ path: "todos/001-ready-p2-task.md" }], issues: [] } },
+    };
+    assert.match(render(todoTool, todoResult, false), /1 todo listed/);
+    assert.equal(render(todoTool, todoResult, false).includes("001-ready-p2-task.md"), false);
+    assert.match(render(todoTool, todoResult, true), /001-ready-p2-task\.md/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 test("profile provider loaded before the Pi adapter is resolved for that invocation", async () => {
   const root = await workspace();
