@@ -18,11 +18,11 @@ Other project documentation is unrestricted. Do not invent these directories, cr
 
 ## Retrieval workflow
 
-1. Use `project_artifact_describe` first when profile fields or a domain schema may matter. It exposes generic schemas plus workspace-applicable profile availability; do not guess profile fields.
-2. Use `project_artifact_search` for fast candidate retrieval and validation diagnostics. Prefer exact YAML-frontmatter filters for known metadata and scoped searches for established plans, solutions, memories, docs, or todos. Its body index is preview-only, so it is not proof of every body occurrence.
-3. For exhaustive full-body search, literal/exact matching, or a complete occurrence count, use direct `rg` over the resolved source roots. Do not represent indexed results as exhaustive body evidence.
-4. Use `discover_candidate_files` only when ownership is unfamiliar and multiple plausible homes span documentation and code. It is not the default for ordinary documentation search.
-5. Read the selected files before citing, changing, or relying on them. Report the paths and evidence actually read.
+1. Use `project_artifact_describe` when known definitions, optional profile types/enums/applicability, or workspace-specific profile availability would help interpretation. It does not authorize or gate metadata discovery or filtering.
+2. Use `project_artifact_search` for fast candidate retrieval, bounded observed metadata, and diagnostics. It exact-filters every supported top-level YAML-frontmatter field without a known schema, so use exact filters for known or unknown fields and scoped searches for established plans, solutions, memories, docs, or todos. Mixed and custom schemas may coexist. Interpret result semantics: `raw_exact` is a raw exact metadata match, while a compatible profile can additionally report `profile_validated` or `profile_warning` confidence.
+3. For exhaustive full-body search, literal/exact matching, a complete occurrence count, or a complete metadata inventory, use direct `rg` over the resolved source roots, then read the matches. Do not represent indexed bodies or bounded observations as exhaustive evidence.
+4. Use `discover_candidate_files` only for a narrow unfamiliar ownership question with multiple plausible documentation-and-code homes. It is not the default for ordinary documentation search.
+5. Read the selected files before citing, changing, or relying on them. Arbitrary Markdown remains authoritative and readable; report the paths and evidence actually read.
 
 ## Writing boundary
 

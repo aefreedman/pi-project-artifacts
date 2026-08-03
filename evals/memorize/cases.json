@@ -4,7 +4,7 @@
     {
       "id": "memorize-verified-learning",
       "prompt": "/memorize the bounded retry recovery behavior we just verified",
-      "expected": ["treat invocation as one artifact write authorization", "require direct outcome evidence", "search for an existing canonical artifact", "validate the created or updated artifact"]
+      "expected": ["treat invocation as one artifact write authorization", "require direct outcome evidence", "classify the target as either a solution or memory", "search for an existing canonical artifact", "validate the created or updated artifact"]
     },
     {
       "id": "memorize-insufficient-evidence",
@@ -13,8 +13,8 @@
     },
     {
       "id": "memorize-ambiguous-domain",
-      "prompt": "/memorize the verified retry recovery learning when docs/patterns and docs/solutions both fit",
-      "expected": ["ask one narrow destination question", "do not guess or create a directory", "do not validate an unresolved path as a mutation target"]
+      "prompt": "/memorize this verified learning when it could reasonably be either a solution or a durable non-solution memory",
+      "expected": ["ask one narrow solution-or-memory destination question", "do not guess or create a directory", "do not route the output to another artifact class", "do not validate an unresolved path as a mutation target"]
     },
     {
       "id": "memorize-reusable-pattern-not-incident-log",

@@ -68,11 +68,26 @@ export type IndexRequest = Readonly<{
     freshnessTtlMs?: number;
     rebuild?: boolean;
 }>;
+export type ObservedFieldCatalogEntry = Readonly<{
+    name: string;
+    documentCount: number;
+    inferredPrimitiveTypes: readonly ("string" | "number" | "boolean" | "null")[];
+    distinctCount: number;
+    distinctCountCapped: boolean;
+    sampleValues: readonly string[];
+}>;
+export type ObservedFieldCatalog = Readonly<{
+    fields: readonly ObservedFieldCatalogEntry[];
+    totalFieldCount: number;
+    truncated: boolean;
+}>;
 export declare function defaultIndexFilename(roots: ArtifactRoots): string;
 export declare function resolveIndexPath(request: IndexRequest, roots: ArtifactRoots): string;
 /** Resolve a requested workspace within the physical session boundary without indexing it. */
 export declare function resolveContainedWorkspaceRoot(context: ArtifactExecutionContextV1, request?: Pick<IndexRequest, "workspaceRoot">): Promise<string>;
 export declare function buildOrRefreshIndex(request: IndexRequest, context: ArtifactExecutionContextV1, profiles?: readonly ArtifactProfileV1[], failureInjector?: FailureInjector): Promise<RefreshResult>;
+/** A bounded, safe summary of the top-level metadata actually indexed. */
+export declare function observedFieldCatalog(index: ArtifactIndexV1): ObservedFieldCatalog;
 export declare function inspectIndexOwnership(indexPath: string): Promise<{
     kind: "absent";
 } | {
@@ -88,4 +103,6 @@ export declare function validateArtifactIndexV1(value: unknown): ArtifactIndexV1
 export declare function markIndexesDirtyForPath(cwd: string, rawPath: unknown): void;
 export declare function trackArtifactToolResult(event: unknown, cwd: string): void;
 export declare function commandMayMutateArtifacts(command: unknown): boolean;
+/** Removes credentials from metadata returned to callers while preserving safe fields. */
+export declare function safeFrontmatterForDisplay(frontmatter: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>>;
 //# sourceMappingURL=artifact-index.d.ts.map

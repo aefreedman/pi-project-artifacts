@@ -145,6 +145,20 @@ export interface ArtifactSearchResultV1 {
   readonly provenance: ArtifactExecutionProvenanceV1;
 }
 
+/** Root/index controls shared by the canonical observed-metadata describe path. */
+export interface ArtifactDescribeRequestV1 {
+  readonly workspaceRoot?: string;
+  readonly docsRoot?: string;
+  readonly todosRoot?: string;
+  readonly indexPath?: string;
+  readonly freshnessMode?: "auto" | "strict" | "memory";
+  readonly freshnessTtlMs?: number;
+  readonly rebuild?: boolean;
+}
+export interface ArtifactDescribeResultV1 {
+  readonly details: Readonly<Record<string, unknown>>;
+}
+
 export interface ArtifactSearchServiceV1 extends RegistryRecord {
   readonly contractVersion: 1;
   readonly kind: "artifact-search-service";
@@ -153,6 +167,11 @@ export interface ArtifactSearchServiceV1 extends RegistryRecord {
     context: ArtifactExecutionContextV1,
     request: ArtifactSearchRequestV1,
   ): Promise<ArtifactSearchResultV1>;
+  /** Optional for source compatibility with early v1 providers. */
+  describe?(
+    context: ArtifactExecutionContextV1,
+    request: ArtifactDescribeRequestV1,
+  ): Promise<ArtifactDescribeResultV1>;
 }
 
 export type TodoStatusV1 = "pending" | "ready" | "complete";

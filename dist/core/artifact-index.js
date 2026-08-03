@@ -199,6 +199,38 @@ async function parseEntry(file, relative, context, workspaceRoot, profiles) {
         profileData: Object.freeze(profileData),
     });
 }
+/** A bounded, safe summary of the top-level metadata actually indexed. */
+export function observedFieldCatalog(index) {
+    const valuesByField = new Map();
+    for (const entry of Object.values(index.files))
+        for (const [name, value] of Object.entries(entry.frontmatter)) {
+            const current = valuesByField.get(name) ?? { documentCount: 0, primitiveTypes: new Set(), values: new Set(), valuesCapped: false };
+            if (!valuesByField.has(name))
+                valuesByField.set(name, current);
+            current.documentCount += 1;
+            for (const scalar of catalogScalars(value)) {
+                current.primitiveTypes.add(scalar.type);
+                // A repeat of one of the first 100 values is not evidence that the
+                // distinct-value count exceeded its display boundary.
+                if (current.values.has(scalar.value))
+                    continue;
+                if (current.values.size < 100)
+                    current.values.add(scalar.value);
+                else
+                    current.valuesCapped = true;
+            }
+        }
+    const all = [...valuesByField.entries()].sort(([left], [right]) => left.localeCompare(right));
+    const fields = all.slice(0, 100).map(([name, data]) => Object.freeze({
+        name,
+        documentCount: data.documentCount,
+        inferredPrimitiveTypes: Object.freeze([...data.primitiveTypes].sort()),
+        distinctCount: data.values.size,
+        distinctCountCapped: data.valuesCapped,
+        sampleValues: Object.freeze(isSensitiveFieldName(name) ? [] : [...data.values].filter(isSafeCatalogSample).sort().slice(0, 3)),
+    }));
+    return Object.freeze({ fields: Object.freeze(fields), totalFieldCount: all.length, truncated: all.length > fields.length });
+}
 export async function inspectIndexOwnership(indexPath) {
     let text;
     try {
@@ -403,6 +435,62 @@ catch (error) {
     throw error;
 } }
 function hasCode(error, code) { return typeof error === "object" && error !== null && "code" in error && error.code === code; }
+function catalogScalars(value) {
+    if (value === null)
+        return [{ type: "null", value: "null" }];
+    if (typeof value === "string")
+        return [{ type: "string", value }];
+    if (typeof value === "number" && Number.isFinite(value))
+        return [{ type: "number", value: String(value) }];
+    if (typeof value === "boolean")
+        return [{ type: "boolean", value: String(value) }];
+    return Array.isArray(value) ? value.flatMap(catalogScalars) : [];
+}
+function isSensitiveFieldName(name) {
+    // Metadata names commonly carry credentials even when their values do not
+    // match a recognizable provider-specific format. Keep their counts/types,
+    // but never surface examples. Normalize camelCase and separators first so
+    // apiKey, api_key, and api-key are treated the same way.
+    const normalized = name.normalize("NFKC").replace(/([a-z0-9])([A-Z])/gu, "$1_$2").toLowerCase().replace(/[^a-z0-9]+/gu, "_");
+    return /(?:^|_)(?:api_?key|access_?key|private_?key|key|token|secret|password|credential|auth(?:entication|orization)?|cookie)(?:_|$)/u.test(normalized);
+}
+function isSafeCatalogSample(value) {
+    return value.length > 0 && value.length <= 80 && !/[\r\n]/u.test(value) && !looksLikeCredential(value);
+}
+/** Conservative recognition for credentials stored under otherwise neutral names. */
+function looksLikeCredential(value) {
+    // Do not spend unbounded work classifying a value that is already too large
+    // to safely expose; redact it conservatively instead.
+    if (value.length > 512)
+        return true;
+    const sample = value.trim();
+    return /^(?:AKIA|ASIA)[A-Z0-9]{16}$/u.test(sample) // AWS access keys
+        || /^(?:gh[pousr]|github_pat)_[A-Za-z0-9_]{20,}$/u.test(sample) // GitHub tokens
+        || /^sk-[A-Za-z0-9_-]{16,}$/u.test(sample) // API keys such as OpenAI
+        || /^xox[baprs]-[A-Za-z0-9-]{10,}$/u.test(sample) // Slack tokens
+        || /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u.test(sample) // JWTs
+        || /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----/u.test(sample);
+}
+/** Removes credentials from metadata returned to callers while preserving safe fields. */
+export function safeFrontmatterForDisplay(frontmatter) {
+    const output = {};
+    for (const [name, value] of Object.entries(frontmatter)) {
+        if (isSensitiveFieldName(name))
+            continue;
+        output[name] = redactSensitiveValue(value);
+    }
+    return Object.freeze(output);
+}
+function redactSensitiveValue(value) {
+    if (typeof value === "string")
+        return looksLikeCredential(value) ? "[redacted]" : value;
+    if (Array.isArray(value))
+        return Object.freeze(value.map(redactSensitiveValue));
+    if (value !== null && typeof value === "object") {
+        return Object.freeze(Object.fromEntries(Object.entries(value).map(([name, child]) => [name, isSensitiveFieldName(name) ? "[redacted]" : redactSensitiveValue(child)])));
+    }
+    return value;
+}
 function asRecord(value, label) { if (value === null || typeof value !== "object" || Array.isArray(value))
     throw new TypeError(`${label} must be an object`); return value; }
 function isStringArray(value) { return Array.isArray(value) && value.every((entry) => typeof entry === "string"); }

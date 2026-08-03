@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const lockfile = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
 
 test("package exposes one canonical Pi extension, three package-owned skills, and side-effect-free contracts/core", () => {
   assert.deepEqual(manifest.pi.extensions, ["./dist/pi/index.js"]);
@@ -30,11 +31,22 @@ test("package exposes one canonical Pi extension, three package-owned skills, an
   assert.deepEqual(Object.keys(manifest.exports).sort(), [".", "./contracts", "./contracts/v1", "./contracts/v1/conformance", "./core", "./pi"]);
 });
 
+test("runtime dependencies resolve from publishable package sources", () => {
+  const registry = lockfile.packages["node_modules/@aefree/pi-capability-registry"];
+  assert.equal(registry.version, "0.1.0");
+  assert.match(registry.resolved, /^https:\/\/registry\.npmjs\.org\/@aefree\/pi-capability-registry\/-\/pi-capability-registry-0\.1\.0\.tgz$/);
+  assert.match(registry.integrity, /^sha512-/);
+  assert.notEqual(registry.link, true);
+  assert.equal(Object.keys(lockfile.packages).some((key) => key.startsWith("../")), false);
+});
+
 test("memorize prompt owns bounded project-artifact capture without compatibility aliases", () => {
   const prompt = readFileSync(new URL("../prompts/memorize.md", import.meta.url), "utf8");
   assert.match(prompt, /Direct `\/memorize` invocation authorizes creation or focused update of one resolved project-learning artifact/);
   assert.match(prompt, /does not alter model, session, or global user memory/);
   assert.match(prompt, /project_artifact_search/);
+  assert.match(prompt, /output target must be either the project's `solutions\/` domain[\s\S]*or its `memories\/` domain/);
+  assert.match(prompt, /Do not route `\/memorize` output to `plans\/`, `patterns\/`, general documentation, todos, or another artifact class/);
   assert.match(prompt, /root cause, reusable resolution pattern, verification evidence/);
   assert.match(prompt, /ask one narrow destination question/);
   assert.match(prompt, /do not write/);

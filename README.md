@@ -11,7 +11,7 @@ Canonical project-local Markdown discovery and deterministic file-todo lifecycle
 
 The package registers `ArtifactSearchServiceV1` and `TodoLifecycleServiceV1` per Pi session. It owns the side-effect-free artifact profile/service contracts under `@aefree/pi-project-artifacts/contracts/v1`; providers such as `pi-unity` register through those contracts in either load order.
 
-`/memorize` persists one verified reusable learning as authoritative project Markdown. Invocation authorizes only one resolved artifact creation or focused update; evidence, duplicate detection, canonical destination resolution, profile constraints, and post-write validation remain mandatory. It never claims model, session, or global user memory.
+`/memorize` persists one verified reusable learning as authoritative project Markdown in either the project's `solutions/` domain (verified technical problem/resolution) or `memories/` domain (verified durable non-solution knowledge). Invocation authorizes only one resolved artifact creation or focused update; evidence, duplicate detection, destination resolution, profile constraints, and post-write validation remain mandatory. It never routes output to another artifact class or claims model, session, or global user memory.
 
 `grooming-project-artifacts` owns the read-first procedure for organizing, normalizing, deduplicating, and optionally cleaning up project Markdown. It uses structured artifact search plus exact source evidence, leaves profile-defined migrations to owning migrators, and requires explicit authority before edits.
 
@@ -36,14 +36,13 @@ Index writes use process-local queues, schema-owned interprocess locks, exclusiv
 
 Markdown files under the resolved project roots are authoritative. `docs/plans/`, `docs/solutions/`, and `docs/memories/` are recognized optional conventions, not required roots or a restriction on other documentation. Solutions hold verified technical problem/resolution learnings; memories hold verified durable project knowledge that is not a solution. The package never creates these directories or artifacts automatically.
 
-Use `project_artifact_describe` to discover generic schemas and workspace-applicable profile availability before relying on a domain contract. Use `project_artifact_search` for generic parse/index/filter/rank/freshness candidate retrieval and visible validation diagnostics, then read the selected Markdown for final evidence.
+`project_artifact_search` indexes and exact-filters every supported top-level YAML-frontmatter key without requiring a known schema or an installed profile. It supports mixed and custom metadata schemas in one workspace. Use `project_artifact_describe` to report known generic/profile definitions and workspace-applicable profile availability; use `project_artifact_search` for parse/index/filter/rank/freshness candidate retrieval, bounded observed metadata, and validation diagnostics. Then read the selected Markdown for final evidence.
 
-- The index stores only a body preview: body search/snippets are fast candidate signals, not exhaustive full-body or exact-match evidence. Use direct `rg` against source files for exhaustive, literal, or complete-occurrence searches.
-- YAML frontmatter is the fast path for known metadata: use exact `filters` values after schema discovery.
-- Generic unfiltered search continues when no profile is installed.
-- Generic fields (`status`, `priority`, `tags`, `module`, `component`, `severity`) remain available.
-- A filter whose field is defined only by a missing/incompatible profile throws `missing_profile`; it never guesses or returns an authoritative empty result.
-- Profile fields use exact filters and are validated independently. Domain providers own compatibility semantics such as Unity v1 versus v2 classification; `project_artifact_describe` exposes workspace-applicable schemas and profile availability, while `project_artifact_search` exposes validation diagnostics.
+- The index stores only a body preview: body search/snippets and observed metadata are bounded candidate signals, not exhaustive full-body, complete-field-inventory, or exact-match evidence. Use direct `rg` against source files for exhaustive, literal, or complete-occurrence searches, then read the matching files.
+- YAML frontmatter is a schema-open fast path: use exact `filters` values for any supported top-level metadata field, including fields not described by a profile.
+- Search results label exact raw metadata matches as `raw_exact`; a compatible profile may additionally label them `profile_validated` or `profile_warning`. These labels report confidence/diagnostics and never change whether the raw exact filter is permitted.
+- Profiles optionally enrich known fields with types, enums, applicability, and diagnostics. They never grant or withhold permission to discover or filter metadata, and no profile is required for generic or unknown-field search.
+- Arbitrary project Markdown and its metadata remain authoritative, readable source material; the index, definitions, availability, observations, and profile results are derived aids.
 
 ## Atomic file todos
 

@@ -7,7 +7,7 @@
   {
     "id": "frontmatter-fast-path-and-profile-discovery",
     "prompt": "List approved solution documents with failure_mode: timeout, using the installed domain schema.",
-    "expected": ["uses project_artifact_describe to discover the applicable profile schema", "uses project_artifact_search with an exact failure_mode frontmatter filter", "reports visible validation diagnostics", "does not guess unsupported profile fields"]
+    "expected": ["uses project_artifact_describe to report known definitions and applicable profile availability", "uses project_artifact_search with an exact failure_mode frontmatter filter", "reports bounded observed metadata and visible validation diagnostics", "treats profile types, enums, and applicability as optional enrichment rather than filter permission"]
   },
   {
     "id": "exhaustive-literal-body-search",
@@ -35,9 +35,14 @@
     "expected": ["uses project_artifact_search", "uses structured scope/filter pass", "uses a broad any/minTermMatches pass", "cites Markdown paths"]
   },
   {
-    "id": "missing_unity_profile",
-    "prompt": "Filter Unity solutions by failure_mode without pi-unity installed.",
-    "expected": ["receives missing_profile", "does not infer an empty result", "recommends compatible profile"]
+    "id": "unknown-field-without-profile",
+    "prompt": "Filter solution documents by custom_failure_mode: timeout without an optional profile installed.",
+    "expected": ["uses project_artifact_search with an exact custom_failure_mode filter", "succeeds without requiring a known schema or profile", "reports raw_exact matches and bounded observed metadata", "does not infer an empty result from profile absence"]
+  },
+  {
+    "id": "mixed-schema-profile-confidence",
+    "prompt": "Find timeout solutions across Unity, Unreal, and custom documents, and explain how trustworthy each metadata match is.",
+    "expected": ["uses exact top-level metadata filters without imposing one domain schema", "supports mixed Unity, Unreal, and custom metadata", "distinguishes raw_exact from profile_validated and profile_warning result semantics", "reports known definitions and profile availability separately from bounded observed metadata", "reads authoritative Markdown before final claims"]
   },
   {
     "id": "generic_without_profile",

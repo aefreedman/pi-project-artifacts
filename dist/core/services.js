@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import { createArtifactProfileRegistryV1, resolveArtifactProfilesV1, } from "../contracts/v1/index.js";
-import { executeArtifactSearch, requireComposableProfiles } from "./artifact-search.js";
+import { describeArtifactWorkspace, executeArtifactSearch, requireComposableProfiles } from "./artifact-search.js";
 import { artifactExecutionBindingV1 } from "./execution-context.js";
 import { executeTodoLifecycle } from "./todo-lifecycle.js";
 const OWNER = Object.freeze({
@@ -27,6 +27,16 @@ export function createArtifactSearchServiceV1() {
             const resolution = resolveArtifactProfilesV1(binding.scope, profileRegistry);
             requireComposableProfiles(resolution);
             return await executeArtifactSearch(boundedContext, request, resolution);
+        },
+        async describe(context, request) {
+            const binding = artifactExecutionBindingV1(context);
+            if (binding === undefined)
+                throw new Error("Artifact describe execution context is not bound to the current Pi session.");
+            const boundedContext = Object.freeze({ ...context, cwd: binding.cwd });
+            const resolution = resolveArtifactProfilesV1(binding.scope, profileRegistry);
+            requireComposableProfiles(resolution);
+            const details = await describeArtifactWorkspace(boundedContext, request, resolution);
+            return Object.freeze({ details });
         },
     });
 }

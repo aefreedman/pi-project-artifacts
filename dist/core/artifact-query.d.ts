@@ -1,5 +1,5 @@
 import type { ArtifactFieldDefinitionV1, ArtifactProfileV1, ArtifactSearchRequestV1 } from "../contracts/v1/index.js";
-import type { ArtifactIndexV1, ArtifactKind, ProfileEntryData } from "./artifact-index.js";
+import { type ArtifactIndexV1, type ArtifactKind, type ProfileEntryData } from "./artifact-index.js";
 export declare const BODY_PREVIEW_SEARCH_CHARS = 1200;
 export type ArtifactFieldDescription = Readonly<{
     name: string;
@@ -15,6 +15,15 @@ export type ArtifactFieldDescription = Readonly<{
     required: boolean;
     enumValues: readonly string[];
 }>;
+export type FilterFieldSemantics = Readonly<{
+    field: string;
+    confidence: "raw_exact" | "profile_validated" | "profile_warning";
+    profiles: readonly Readonly<{
+        profileId: string;
+        outcome: "valid" | "invalid" | "conflict" | "unavailable" | "error";
+    }>[];
+    profilesTruncated: boolean;
+}>;
 export type ArtifactSearchItem = Readonly<{
     path: string;
     kind: ArtifactKind;
@@ -25,6 +34,7 @@ export type ArtifactSearchItem = Readonly<{
     reasons: readonly string[];
     related?: readonly RelatedArtifact[];
     profileValidation: readonly ProfileEntryData[];
+    filterSemantics?: readonly FilterFieldSemantics[];
 }>;
 export type RelatedArtifact = Readonly<{
     path: string;

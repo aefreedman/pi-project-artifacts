@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { safeFrontmatterForDisplay } from "./artifact-index.js";
 import { ProjectArtifactError } from "./errors.js";
 import { stringValues } from "./markdown.js";
 const DEFAULT_LIMIT = 20;
@@ -55,7 +56,8 @@ export function searchArtifactIndex(index, request, profiles) {
         if (score <= 0)
             continue;
         const titlePart = entry.title === undefined ? {} : { title: entry.title };
-        scored.push(Object.freeze({ path: entry.path, kind: entry.kind, ...titlePart, score, frontmatter: entry.frontmatter, reasons: Object.freeze(reasons), profileValidation: entry.profileData }));
+        const filterSemantics = Object.keys(filters).length === 0 ? undefined : semanticsForFilters(entry, Object.keys(filters), profiles);
+        scored.push(Object.freeze({ path: entry.path, kind: entry.kind, ...titlePart, score, frontmatter: safeFrontmatterForDisplay(entry.frontmatter), reasons: Object.freeze(reasons), profileValidation: entry.profileData, ...(filterSemantics === undefined ? {} : { filterSemantics }) }));
     }
     scored.sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
     const totalMatches = scored.length;
@@ -94,6 +96,8 @@ export function formatArtifactResults(result, request, metadata) {
                 lines.push(`   snippet: ${item.snippet}`);
             if (request.explain && item.reasons.length > 0)
                 lines.push(`   reasons: ${item.reasons.slice(0, 6).join("; ")}`);
+            if (item.filterSemantics?.length)
+                lines.push(`   filter semantics: ${formatFilterSemantics(item.filterSemantics)}`);
             if (item.profileValidation.length > 0)
                 lines.push(`   profile validation: ${item.profileValidation.map((profile) => `${profile.profileId}=${profile.validation.outcome}`).join("; ")}`);
             if (item.related?.length)
@@ -102,6 +106,8 @@ export function formatArtifactResults(result, request, metadata) {
         else {
             const summary = frontmatterSummary(item.frontmatter, true);
             lines.push(`${index + 1}. [${item.kind} ${item.score.toFixed(0)}] ${item.path}${item.title ? ` — ${item.title}` : ""}${summary ? ` | ${summary}` : ""}`);
+            if (item.filterSemantics?.length)
+                lines.push(`   filter semantics: ${formatFilterSemantics(item.filterSemantics)}`);
             if (request.explain && item.reasons.length > 0)
                 lines.push(`   why: ${item.reasons.slice(0, 4).join("; ")}`);
             if (item.related?.length)
@@ -144,50 +150,21 @@ export function controlsFor(request, fieldDefinitions) {
         index: Object.freeze(["workspaceRoot", "docsRoot", "todosRoot", "indexPath", "rebuild", "freshnessMode", "freshnessTtlMs", "outputMode"]),
     });
 }
-function normalizeFilters(filters, fieldDefinitions) {
+/** Filters are intentionally open: every parsed top-level frontmatter key is searchable as raw normalized data. */
+function normalizeFilters(filters, _fieldDefinitions) {
     const output = {};
-    const byName = new Map();
-    for (const field of fieldDefinitions)
-        if (field.filterable)
-            (byName.get(field.name) ?? (byName.set(field.name, []), byName.get(field.name))).push(field);
     for (const [key, value] of Object.entries(filters ?? {})) {
-        if (!/^[a-z][a-z0-9_]*$/u.test(key))
+        // Match the tolerant parser's complete top-level-key surface so any parsed
+        // field can be queried without a schema registration.
+        if (!/^[A-Za-z0-9_-]+$/u.test(key))
             throw new ProjectArtifactError("filter_invalid", `Invalid artifact filter field '${key}'.`);
-        const definitions = byName.get(key);
-        if (definitions === undefined) {
-            throw new ProjectArtifactError("missing_profile", `No compatible artifact profile defines filter '${key}'.`, { field: key, expectedContractVersion: 1, remediation: "Install or enable the package that owns this artifact-profile field, then retry in a fresh session." });
-        }
-        if (definitions.length !== 1) {
-            const owners = definitions.map((definition) => definition.owner.kind === "generic"
-                ? "generic"
-                : `profile '${definition.owner.profileId}' (${definition.owner.packageName})`);
-            throw new ProjectArtifactError("filter_ambiguous", `Filter '${key}' is an unqualified field-name collision between ${owners.join(" and ")}; profile fields never merge with generic or other profile semantics.`, { field: key, definitions });
-        }
-        const definition = definitions[0];
-        const values = stringValues(value).map((item) => validateFilterValue(key, item, definition)).filter(Boolean);
-        if (values.length > 0)
-            output[key] = Object.freeze({ values: Object.freeze([...new Set(values)]), owner: definition.owner });
+        const values = stringValues(value).map(normalizeSearchText).filter(Boolean);
+        if (values.length === 0)
+            throw new ProjectArtifactError("filter_invalid", `Filter '${key}' must not be empty.`);
+        output[key] = Object.freeze({ values: Object.freeze([...new Set(values)]) });
     }
     return output;
 }
-function validateFilterValue(field, raw, definition) {
-    const value = normalizeSearchText(raw);
-    if (!value)
-        throw new ProjectArtifactError("filter_invalid", `Filter '${field}' must not be empty.`);
-    const type = definition.type;
-    const typeValid = type === "string" || type === "string_list"
-        || type === "integer" && /^-?\d+$/u.test(raw.trim())
-        || type === "boolean" && (value === "true" || value === "false")
-        || type === "date" && isIsoDate(raw.trim());
-    if (!typeValid)
-        throw new ProjectArtifactError("filter_type_invalid", `Filter '${field}' requires a ${type} value; received '${raw}'.`, { field, type, value: raw });
-    const enumValues = [...new Set(definition.enumValues.map(normalizeSearchText))];
-    if (enumValues.length > 0 && !enumValues.includes(value)) {
-        throw new ProjectArtifactError("filter_enum_invalid", `Filter '${field}' must be one of: ${enumValues.join(", ")}.`, { field, value: raw, enumValues });
-    }
-    return value;
-}
-function isIsoDate(value) { return /^\d{4}-\d{2}-\d{2}$/u.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)); }
 function normalizeList(value) { return stringValues(value).map((item) => normalizeSearchText(item)).filter(Boolean); }
 function normalizeSearchText(value) { return value.toLowerCase().replace(/[-_/]+/gu, " ").replace(/\s+/gu, " ").trim(); }
 function tokenizeQuery(value) {
@@ -212,18 +189,36 @@ function passesFilters(entry, filters, includeCompleted) {
     if (includeCompleted === false && entry.kind === "todo" && status === "complete" && filters.status === undefined)
         return false;
     for (const [field, filter] of Object.entries(filters)) {
-        // A profile-owned field is meaningful only for entries to which that exact
-        // profile applied. Raw frontmatter cannot impersonate profile ownership.
-        if (filter.owner.kind === "profile" && !entry.profileData.some((profile) => profile.profileId === filter.owner.profileId
-            && profile.packageName === filter.owner.packageName && profile.packageVersion === filter.owner.packageVersion))
-            return false;
-        const actual = filter.owner.kind === "generic" && field === "status" ? status === undefined ? [] : [status]
-            : filter.owner.kind === "generic" && field === "priority" ? priorityFrom(entry) === undefined ? [] : [priorityFrom(entry)]
+        // Preserve the established todo filename aliases while all actual metadata
+        // keys remain direct, exact-normalized raw filters.
+        const actual = field === "status" ? [...stringValues(entry.frontmatter[field]).map(normalizeSearchText), ...(status === undefined ? [] : [status])]
+            : field === "priority" ? [...stringValues(entry.frontmatter[field]).map(normalizeSearchText), ...(priorityFrom(entry) === undefined ? [] : [priorityFrom(entry)])]
                 : stringValues(entry.frontmatter[field]).map(normalizeSearchText);
         if (!filter.values.some((needle) => actual.some((value) => value === needle)))
             return false;
     }
     return true;
+}
+function semanticsForFilters(entry, fields, profiles) {
+    return Object.freeze([...fields].sort().map((field) => {
+        const defining = profiles.filter((profile) => profile.fields.some((definition) => definition.name === field));
+        const applicable = defining.flatMap((profile) => entry.profileData
+            .filter((data) => data.profileId === profile.id && data.packageName === profile.owner.packageName && data.packageVersion === profile.owner.packageVersion)
+            .map((data) => Object.freeze({ profileId: data.profileId, outcome: data.validation.outcome })));
+        const ordered = applicable.sort((left, right) => left.profileId.localeCompare(right.profileId));
+        // Confidence must reflect every applicable defining profile, not merely
+        // the bounded evidence rows rendered to callers.
+        const confidence = ordered.length === 0 ? "raw_exact" : ordered.every((profile) => profile.outcome === "valid") ? "profile_validated" : "profile_warning";
+        const bounded = ordered.slice(0, 8);
+        return Object.freeze({ field, confidence, profiles: Object.freeze(bounded), profilesTruncated: ordered.length > bounded.length });
+    }));
+}
+function formatFilterSemantics(fields) {
+    return fields.map((field) => {
+        const profiles = field.profiles.map((profile) => `${profile.profileId}=${profile.outcome}`).join(", ");
+        const evidence = profiles || "no applicable defining profile";
+        return `${field.field}=${field.confidence} [${evidence}${field.profilesTruncated ? ", truncated" : ""}]`;
+    }).join("; ");
 }
 function statusFrom(entry) {
     const status = stringValues(entry.frontmatter.status)[0]?.toLowerCase();

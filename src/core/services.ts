@@ -3,13 +3,14 @@ import * as path from "node:path";
 import {
   createArtifactProfileRegistryV1,
   resolveArtifactProfilesV1,
+  type ArtifactDescribeRequestV1,
   type ArtifactExecutionContextV1,
   type ArtifactSearchRequestV1,
   type ArtifactSearchServiceV1,
   type TodoLifecycleRequestV1,
   type TodoLifecycleServiceV1,
 } from "../contracts/v1/index.js";
-import { executeArtifactSearch, requireComposableProfiles } from "./artifact-search.js";
+import { describeArtifactWorkspace, executeArtifactSearch, requireComposableProfiles } from "./artifact-search.js";
 import { artifactExecutionBindingV1 } from "./execution-context.js";
 import { executeTodoLifecycle, type TodoRuntimeOptions } from "./todo-lifecycle.js";
 
@@ -36,6 +37,15 @@ export function createArtifactSearchServiceV1(): ArtifactSearchServiceV1 {
       const resolution = resolveArtifactProfilesV1(binding.scope, profileRegistry);
       requireComposableProfiles(resolution);
       return await executeArtifactSearch(boundedContext, request, resolution);
+    },
+    async describe(context: ArtifactExecutionContextV1, request: ArtifactDescribeRequestV1) {
+      const binding = artifactExecutionBindingV1(context);
+      if (binding === undefined) throw new Error("Artifact describe execution context is not bound to the current Pi session.");
+      const boundedContext = Object.freeze({ ...context, cwd: binding.cwd });
+      const resolution = resolveArtifactProfilesV1(binding.scope, profileRegistry);
+      requireComposableProfiles(resolution);
+      const details = await describeArtifactWorkspace(boundedContext, request, resolution);
+      return Object.freeze({ details });
     },
   });
 }

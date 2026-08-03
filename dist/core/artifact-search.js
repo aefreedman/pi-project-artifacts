@@ -1,5 +1,5 @@
-import { buildOrRefreshIndex } from "./artifact-index.js";
-import { BODY_PREVIEW_SEARCH_CHARS, controlsFor, formatArtifactResults, groupByKind, searchArtifactIndex, suggestedRg } from "./artifact-query.js";
+import { buildOrRefreshIndex, observedFieldCatalog } from "./artifact-index.js";
+import { BODY_PREVIEW_SEARCH_CHARS, controlsFor, describeArtifactFields, formatArtifactResults, groupByKind, searchArtifactIndex, suggestedRg } from "./artifact-query.js";
 export const ARTIFACT_SEARCH_SERVICE_ID = "project-artifact-search.v1";
 export const ARTIFACTS_PACKAGE_NAME = "@aefree/pi-project-artifacts";
 export const ARTIFACTS_PACKAGE_VERSION = "0.1.0";
@@ -7,11 +7,8 @@ export const ARTIFACTS_PACKAGE_VERSION = "0.1.0";
 export async function executeArtifactSearch(context, request, profileResolution) {
     const profiles = profileResolution.outcome === "available" ? profileResolution.records : [];
     const refresh = await buildOrRefreshIndex(request, context, profiles);
-    // Profiles remain in provenance even when no indexed artifact accepted them,
-    // but only actually applied profiles may define the live search surface.
-    const applicableProfiles = profiles.filter((profile) => Object.values(refresh.index.files).some((entry) => entry.profileData.some((data) => data.profileId === profile.id
-        && data.packageName === profile.owner.packageName && data.packageVersion === profile.owner.packageVersion)));
-    const query = searchArtifactIndex(refresh.index, request, applicableProfiles);
+    // Definitions enrich per-result confidence, but never gate raw metadata matching.
+    const query = searchArtifactIndex(refresh.index, request, profiles);
     const limit = Math.max(1, Math.min(request.limit ?? 20, 100));
     const returned = query.results.slice(0, limit);
     const provenance = buildProvenance(refresh.index, profiles, profileResolution);
@@ -45,6 +42,7 @@ export async function executeArtifactSearch(context, request, profileResolution)
             suggestedRg: suggestedRg(request),
             searchCoverage: Object.freeze({ body: Object.freeze({ mode: "preview_only", indexedCharactersPerDocument: BODY_PREVIEW_SEARCH_CHARS, exhaustiveSearch: "Run suggestedRg and then read matching Markdown files directly; terms beyond the preview are not indexed." }) }),
             fieldDefinitions: query.fieldDefinitions,
+            observedFieldCatalog: observedFieldCatalog(refresh.index),
             validationDiagnostics: validationDiagnostics(refresh.index, returned),
             controls: controlsFor(request, query.fieldDefinitions),
         }),
@@ -66,7 +64,7 @@ export function buildProvenance(index, profiles, resolution) {
     if (resolution.outcome === "missing")
         fallbacks.push({ code: "artifact_profiles_missing", action: "used", summary: "Generic artifact search continued without optional artifact profiles." });
     else if (resolution.outcome === "incompatible")
-        fallbacks.push({ code: "artifact_profiles_incompatible", action: "used", summary: "Generic artifact search continued without incompatible artifact profiles; profile-defined filters remain blocked." });
+        fallbacks.push({ code: "artifact_profiles_incompatible", action: "used", summary: "Raw metadata search continued without incompatible optional artifact profiles." });
     else if (resolution.outcome === "duplicate")
         fallbacks.push({ code: "artifact_profiles_duplicate", action: "blocked", summary: "Duplicate artifact profiles are not safe to compose." });
     else
@@ -94,6 +92,27 @@ function validationDiagnostics(index, returned) {
         return Object.freeze({ byOutcome: Object.freeze(byOutcome), diagnostics: Object.freeze(diagnostics) });
     };
     return Object.freeze({ indexed: summarize(Object.values(index.files).map((entry) => ({ path: entry.path, profileValidation: entry.profileData }))), returned: summarize(returned) });
+}
+/** Canonical describe path: use the same contained, disposable index as search. */
+export async function describeArtifactWorkspace(context, request, profileResolution) {
+    const profiles = profileResolution.outcome === "available" ? profileResolution.records : [];
+    const refresh = await buildOrRefreshIndex(request, context, profiles);
+    const applied = new Set(Object.values(refresh.index.files).flatMap((entry) => entry.profileData.map((data) => `${data.profileId}\0${data.packageName}\0${data.packageVersion}`)));
+    const applicable = profiles.filter((profile) => applied.has(`${profile.id}\0${profile.owner.packageName}\0${profile.owner.packageVersion}`));
+    const profileAvailability = profiles.map((profile) => Object.freeze({
+        profileId: profile.id, packageName: profile.owner.packageName, packageVersion: profile.owner.packageVersion,
+        decision: applied.has(`${profile.id}\0${profile.owner.packageName}\0${profile.owner.packageVersion}`) ? "applied" : "not_applicable",
+    })).sort((left, right) => left.profileId.localeCompare(right.profileId));
+    return Object.freeze({
+        workspaceRoot: refresh.index.workspaceRoot,
+        fields: describeArtifactFields(applicable),
+        profileAvailability: Object.freeze(profileAvailability),
+        profileResolution: Object.freeze({ outcome: profileResolution.outcome, providerIds: profileResolution.outcome === "available" ? profiles.map((profile) => profile.id).sort() : profileResolution.providerIds }),
+        observedFieldCatalog: observedFieldCatalog(refresh.index),
+        indexPath: refresh.indexPath.replaceAll("\\", "/"),
+        refreshed: refresh.refreshed,
+        refreshStats: refresh.stats,
+    });
 }
 export function requireComposableProfiles(resolution) {
     if (resolution.outcome === "duplicate") {

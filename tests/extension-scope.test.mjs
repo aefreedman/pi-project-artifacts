@@ -116,6 +116,27 @@ test("artifact describe exposes only workspace-applicable schemas with a fresh i
       name: "mode", type: "string", indexed: true, filterable: true, required: true, enumValues: ["safe", "fast"],
       owner: { kind: "profile", profileId: "fixture.schema", packageName: "@fixture/fixture.schema", packageVersion: "1.0.0" },
     });
+    assert.equal(result.details.observedFieldCatalog.fields.find((field) => field.name === "provider_first").documentCount, 1);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("search details and describe content suppress catalog credential samples", async () => {
+  const root = await workspace();
+  try {
+    const apiKey = "api-secret-value";
+    const neutralCredential = ["AKIA", "IOSFODNN7EXAMPLE"].join("");
+    await writeFile(path.join(root, "docs", "secrets.md"), `---\napi_key: ${apiKey}\naccess_key: access-secret-value\nopaque_value: ${neutralCredential}\n---\n# Secrets\n`);
+    const scope = {};
+    const pi = new FakePi();
+    registerProjectArtifacts(pi);
+    await pi.emit("session_start", context(scope, root));
+    const searchResult = await search(pi, scope, root, {});
+    const describeResult = await pi.tools.get("project_artifact_describe").execute("describe", { workspaceRoot: root, freshnessMode: "strict" }, new AbortController().signal, undefined, context(scope, root));
+    for (const secret of [apiKey, "access-secret-value", neutralCredential]) {
+      assert.equal(JSON.stringify(searchResult.details).includes(secret), false);
+      assert.equal(describeResult.content[0].text.includes(secret), false);
+    }
+    assert.deepEqual(describeResult.details.observedFieldCatalog.fields.find((field) => field.name === "api_key").sampleValues, []);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -163,7 +184,9 @@ test("separate adapter instances keep profile snapshots isolated by session scop
     const resultB = await search(piB, scopeB, root, { filters: { scope_b: "yes" } });
     assert.deepEqual(resultA.details.provenance.profiles.map((item) => item.profileId), ["fixture.scope-a"]);
     assert.deepEqual(resultB.details.provenance.profiles.map((item) => item.profileId), ["fixture.scope-b"]);
-    await assert.rejects(search(piA, scopeA, root, { filters: { scope_b: "yes" } }), (error) => error.code === "missing_profile");
+    const crossScopeRaw = await search(piA, scopeA, root, { filters: { scope_b: "yes" } });
+    assert.equal(crossScopeRaw.details.results.length, 1);
+    assert.equal(crossScopeRaw.details.results[0].filterSemantics[0].confidence, "raw_exact");
     assert.equal(JSON.stringify(resultA).includes("scope-a-private"), false);
     assert.equal(JSON.stringify(resultB).includes("scope-b-private"), false);
   } finally { await rm(root, { recursive: true, force: true }); }
