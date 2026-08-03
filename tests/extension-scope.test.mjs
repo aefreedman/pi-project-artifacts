@@ -3,7 +3,6 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { initTheme } from "@earendil-works/pi-coding-agent";
 import registerProjectArtifacts from "../dist/pi/index.js";
 import {
   ARTIFACT_PROFILE_REGISTRY_KEY_V1,
@@ -12,8 +11,6 @@ import {
   createArtifactProfileRegistryV1,
   resolveArtifactSearchServiceV1,
 } from "../dist/contracts/v1/index.js";
-
-initTheme("dark", false);
 
 class FakePi {
   handlers = new Map();
@@ -88,7 +85,7 @@ test("tool results stay compact until Pi's expanded view is toggled", async () =
     const searchResult = await search(pi, scope, root, {});
     const collapsedSearch = render(searchTool, searchResult, false);
     assert.match(collapsedSearch, /1 artifact returned/);
-    assert.match(collapsedSearch, /to expand/);
+    assert.match(collapsedSearch, /ctrl\+o to expand/);
     assert.equal(collapsedSearch.includes("docs/note.md"), false);
     assert.match(render(searchTool, searchResult, true), /docs\/note\.md/);
 

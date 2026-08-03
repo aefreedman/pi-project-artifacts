@@ -1,5 +1,5 @@
 import { StringEnum } from "@earendil-works/pi-ai";
-import { keyHint, withFileMutationQueue, type AgentToolResult, type ExtensionAPI, type ExtensionContext, type Theme, type ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
+import { keyText, withFileMutationQueue, type AgentToolResult, type ExtensionAPI, type ExtensionContext, type Theme, type ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import * as path from "node:path";
@@ -267,7 +267,8 @@ function expandableToolResult(
 ): Text {
   const fullText = result.content.flatMap((entry) => entry.type === "text" ? [entry.text] : []).join("\n");
   if (options.isPartial || options.expanded) return new Text(fullText || summary, 0, 0);
-  const hint = keyHint("app.tools.expand", "to expand");
+  const expandKey = keyText("app.tools.expand") || "ctrl+o";
+  const hint = `${expandKey} to expand`;
   if (context?.isError) {
     const firstLine = (fullText.split(/\r?\n/u, 1)[0] || "Tool execution failed").slice(0, 240);
     return new Text(`${theme.fg("error", "✗ ")}${theme.fg("muted", firstLine)} ${theme.fg("dim", `(${hint})`)}`, 0, 0);
