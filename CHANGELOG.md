@@ -34,6 +34,7 @@
 - Kept the approved cwd and registry scope in the package-copy-safe private execution binding without adding scope fields to public contracts.
 - Co-install the capability-registry tarball instead of recursively bundling decomposition repositories.
 - Regenerated the lockfile against the published `@aefree/pi-capability-registry` tarball so clean installs no longer depend on a sibling workspace link.
+- Kept authored TypeScript source repository-only; the consumer package ships generated runtime JavaScript and declarations from `dist/`.
 
 ### Removed
 
