@@ -64,4 +64,3 @@ export declare function formatArtifactResults(result: ArtifactQueryResult, reque
 export declare function groupByKind(results: readonly ArtifactSearchItem[]): Readonly<Record<string, readonly ArtifactSearchItem[]>>;
 export declare function suggestedRg(request: ArtifactSearchRequestV1): string | undefined;
 export declare function controlsFor(request: ArtifactSearchRequestV1, fieldDefinitions: readonly ArtifactFieldDescription[]): Readonly<Record<string, unknown>>;
-//# sourceMappingURL=artifact-query.d.ts.map

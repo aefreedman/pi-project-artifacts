@@ -20,4 +20,3 @@ export function throwIfAborted(signal) {
     if (signal?.aborted)
         throw new ProjectArtifactError("aborted", "Artifact operation was aborted.");
 }
-//# sourceMappingURL=errors.js.map

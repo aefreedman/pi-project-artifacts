@@ -465,6 +465,7 @@ test("artifact-profile conformance helper is reusable", async () => {
       const validator = subject.validators[0];
       return {
         ...subject,
+        artifactKinds: ["solution", "memory"],
         validators: [{
           ...validator,
           async validate(context, request) {
@@ -488,7 +489,7 @@ test("artifact-profile conformance helper is reusable", async () => {
         },
       };
     },
-    validArtifact: { path: "/fixture/valid.md", kind: "solution", frontmatter: { category: "physics" } },
+    validArtifact: { path: "/fixture/valid.md", kind: "memory", frontmatter: { category: "physics" } },
     invalidArtifact: { path: "/fixture/invalid.md", kind: "solution", frontmatter: {} },
   });
   assert.equal(report.passed, true);

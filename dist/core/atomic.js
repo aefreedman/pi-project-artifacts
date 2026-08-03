@@ -324,4 +324,3 @@ async function delay(ms, signal) {
         signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new ProjectArtifactError("aborted", "Artifact operation was aborted.")); }, { once: true });
     });
 }
-//# sourceMappingURL=atomic.js.map

@@ -510,4 +510,3 @@ function lockOwner(todosRoot) { return Object.freeze({ schema: "@aefree/pi-proje
 function conflict(code, summary) { return Object.freeze({ outcome: "conflict", code, summary }); }
 function blocked(code, summary) { return Object.freeze({ outcome: "blocked", code, summary }); }
 function hasCode(error, code) { return typeof error === "object" && error !== null && "code" in error && error.code === code; }
-//# sourceMappingURL=todo-lifecycle.js.map

@@ -341,4 +341,3 @@ function frontmatterSummary(frontmatter, compact) {
     const fields = compact ? [["status", "status"], ["priority", "prio"], ["severity", "sev"], ["module", "mod"], ["component", "comp"], ["tags", "tags"]] : [["status", "status"], ["priority", "priority"], ["module", "module"], ["component", "component"], ["severity", "severity"], ["tags", "tags"]];
     return fields.flatMap(([field, label]) => { const values = stringValues(frontmatter[field]); return values.length ? [`${label}=${values.slice(0, 5).join(", ")}${values.length > 5 ? `, +${values.length - 5}` : ""}`] : []; }).join("; ");
 }
-//# sourceMappingURL=artifact-query.js.map

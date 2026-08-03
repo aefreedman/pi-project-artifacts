@@ -30,4 +30,3 @@ export declare function scopedPhysicalDirectoryOrMissing(physicalExecutionRoot: 
  * rejects existing symlink/junction escapes and new targets beneath such escapes.
  */
 export declare function assertPhysicalContainment(physicalRoot: string, target: string, label?: string): Promise<string>;
-//# sourceMappingURL=roots.d.ts.map

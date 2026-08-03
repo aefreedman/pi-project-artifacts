@@ -1,7 +1,6 @@
 {
   "name": "@aefree/pi-project-artifacts",
   "version": "0.1.0",
-  "private": true,
   "description": "Canonical project Markdown artifact search and atomic file-todo lifecycle tools with versioned provider contracts.",
   "type": "module",
   "sideEffects": false,
@@ -20,7 +19,7 @@
     "./core": { "types": "./dist/core/index.d.ts", "import": "./dist/core/index.js" },
     "./pi": { "types": "./dist/pi/index.d.ts", "import": "./dist/pi/index.js" }
   },
-  "files": ["dist", "docs", "prompts", "skills", "evals", "CHANGELOG.md", "LICENSE", "README.md"],
+  "files": ["dist", "docs", "prompts", "skills", "CHANGELOG.md", "LICENSE", "README.md"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test tests/*.test.mjs",

@@ -494,4 +494,3 @@ function redactSensitiveValue(value) {
 function asRecord(value, label) { if (value === null || typeof value !== "object" || Array.isArray(value))
     throw new TypeError(`${label} must be an object`); return value; }
 function isStringArray(value) { return Array.isArray(value) && value.every((entry) => typeof entry === "string"); }
-//# sourceMappingURL=artifact-index.js.map

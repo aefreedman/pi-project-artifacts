@@ -26,4 +26,3 @@ export type ArtifactWorkspaceDescription = Readonly<{
 /** Canonical describe path: use the same contained, disposable index as search. */
 export declare function describeArtifactWorkspace(context: ArtifactExecutionContextV1, request: IndexRequest, profileResolution: ArtifactProfileResolution): Promise<ArtifactWorkspaceDescription>;
 export declare function requireComposableProfiles(resolution: ArtifactProfileResolution): void;
-//# sourceMappingURL=artifact-search.d.ts.map

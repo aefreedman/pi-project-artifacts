@@ -16,4 +16,3 @@ export declare function extractHeadings(body: string): string[];
 export declare function extractArtifactLinks(body: string): string[];
 export declare function replaceTopLevelFrontmatterScalar(text: string, key: string, expected: string, replacement: string): string;
 export declare function serializeFrontmatter(metadata: Readonly<Record<string, unknown>>, order?: readonly string[]): string;
-//# sourceMappingURL=markdown.d.ts.map

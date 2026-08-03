@@ -180,4 +180,3 @@ function serializeScalar(value) {
     return /^[a-zA-Z0-9_./-]+$/u.test(text) && !/^(?:true|false|null|~|-?\d+(?:\.\d+)?)$/u.test(text) ? text : JSON.stringify(text);
 }
 function escapeRegex(value) { return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"); }
-//# sourceMappingURL=markdown.js.map

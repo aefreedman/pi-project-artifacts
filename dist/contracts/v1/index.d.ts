@@ -296,4 +296,3 @@ export declare function assertTodoLifecycleRequestV1(value: unknown): asserts va
 export declare function assertTodoLifecycleResultV1(value: unknown): asserts value is TodoLifecycleResultV1;
 /** Validates result paths and operation semantics in the request's root context. */
 export declare function assertTodoLifecycleResultForRequestV1(value: unknown, requestValue: unknown): asserts value is TodoLifecycleResultV1;
-//# sourceMappingURL=index.d.ts.map

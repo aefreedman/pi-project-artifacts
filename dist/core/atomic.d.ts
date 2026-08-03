@@ -19,4 +19,3 @@ export declare function removeIfMatches(target: string, expected: Uint8Array | s
 export declare function writeJsonAtomic(target: string, value: unknown, validatedExisting: boolean, failureInjector?: FailureInjector): Promise<void>;
 export declare function fsyncDirectory(directory: string): Promise<void>;
 export declare function cleanupOwnedOrphanTemps(indexPath: string, staleMs?: number): Promise<string[]>;
-//# sourceMappingURL=atomic.d.ts.map

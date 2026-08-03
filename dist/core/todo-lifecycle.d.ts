@@ -17,4 +17,3 @@ type Inspected = {
 export declare function executeTodoLifecycle(context: ArtifactExecutionContextV1, request: TodoLifecycleRequestV1, options?: TodoRuntimeOptions): Promise<TodoLifecycleResultV1>;
 export declare function inspectTodoFile(file: string): Promise<Inspected>;
 export {};
-//# sourceMappingURL=todo-lifecycle.d.ts.map

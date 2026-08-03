@@ -11,6 +11,14 @@ Canonical project-local Markdown discovery and deterministic file-todo lifecycle
 
 The package registers `ArtifactSearchServiceV1` and `TodoLifecycleServiceV1` per Pi session. It owns the side-effect-free artifact profile/service contracts under `@aefree/pi-project-artifacts/contracts/v1`; providers such as `pi-unity` register through those contracts in either load order. See [Developing artifact-profile providers](docs/artifact-profile-providers.md) for the optional-peer, runtime-rendezvous, lifecycle, conformance, and schema-evolution contract.
 
+## Installation
+
+```bash
+pi install npm:@aefree/pi-project-artifacts@0.1.0
+```
+
+Use `pi install -l npm:@aefree/pi-project-artifacts@0.1.0` for a project-local installation.
+
 `/memorize` persists one verified reusable learning as authoritative project Markdown in either the project's `solutions/` domain (verified technical problem/resolution) or `memories/` domain (verified durable non-solution knowledge). Invocation authorizes only one resolved artifact creation or focused update; evidence, duplicate detection, destination resolution, profile constraints, and post-write validation remain mandatory. It never routes output to another artifact class or claims model, session, or global user memory.
 
 `grooming-project-artifacts` owns the read-first procedure for organizing, normalizing, deduplicating, and optionally cleaning up project Markdown. It uses structured artifact search plus exact source evidence, leaves profile-defined migrations to owning migrators, and requires explicit authority before edits.
@@ -28,7 +36,7 @@ Derived indexes use:
 
 The v1 envelope identifies its schema, workspace/docs/todos physical roots, stable root identity, contributing profiles, content hashes, and complete entries. Strict refresh detects add/update/delete and external edits. Auto mode uses dirty tracking plus a bounded TTL; memory mode deliberately trusts the loaded index.
 
-Legacy `.compound-game-dev/artifact-index*.json` files are never read by default, imported, moved, or deleted. An explicit occupied `indexPath` is replaced only when absent or when its entire canonical/legacy owned envelope validates. Unrelated JSON, malformed envelopes, authoritative-root overlap, and physical symlink/junction escapes fail closed.
+Pre-existing `.compound-game-dev/artifact-index*.json` files are never read by default, imported, moved, or deleted. An explicit occupied `indexPath` is replaced only when absent or when its entire recognized project-artifact envelope validates. Unrelated JSON, malformed envelopes, authoritative-root overlap, and physical symlink/junction escapes fail closed.
 
 Index writes use process-local queues, schema-owned interprocess locks, exclusive temporary files, file sync, atomic replacement, orphan-temp cleanup, and structured stale/malformed-lock diagnostics. Locks carry random nonces; dead-owner reclamation and release first rename to a nonce-qualified quarantine and verify ownership before deletion.
 
@@ -86,4 +94,4 @@ npm test
 npm pack --dry-run
 ```
 
-Behavioral eval seeds live under `evals/file-todos/` and `evals/artifact-research/`; they cover baseline artifact-skill activation and safe search routing as well as todo behavior. Live model trials are opt-in and not part of `npm test`.
+Repository-only behavioral eval seeds live under `evals/`; they cover artifact-skill activation, safe search routing, memorize behavior, and todo behavior. They are not included in the npm package, and live model trials are opt-in rather than part of `npm test`.

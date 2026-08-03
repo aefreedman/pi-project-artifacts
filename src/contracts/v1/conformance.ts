@@ -27,13 +27,13 @@ export interface ArtifactProfileConformanceSubjectV1 {
   readonly createProfile: (marker?: number) => ArtifactProfileV1;
   readonly validArtifact: {
     readonly path: string;
-    readonly kind: "doc" | "solution" | "plan" | "todo" | "other";
+    readonly kind: "doc" | "solution" | "plan" | "memory" | "todo" | "other";
     readonly frontmatter: Readonly<Record<string, unknown>>;
     readonly body?: string;
   };
   readonly invalidArtifact?: {
     readonly path: string;
-    readonly kind: "doc" | "solution" | "plan" | "todo" | "other";
+    readonly kind: "doc" | "solution" | "plan" | "memory" | "todo" | "other";
     readonly frontmatter: Readonly<Record<string, unknown>>;
     readonly body?: string;
   };

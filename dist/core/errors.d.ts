@@ -7,4 +7,3 @@ export declare class ProjectArtifactError extends Error {
 }
 export declare function errorCode(error: unknown): string | undefined;
 export declare function throwIfAborted(signal?: AbortSignal): void;
-//# sourceMappingURL=errors.d.ts.map

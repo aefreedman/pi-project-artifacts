@@ -23,4 +23,3 @@ export function bindArtifactExecutionScopeV1(context, scope) {
 export function artifactExecutionBindingV1(context) {
     return invocationScopes(false)?.get(context);
 }
-//# sourceMappingURL=execution-context.js.map

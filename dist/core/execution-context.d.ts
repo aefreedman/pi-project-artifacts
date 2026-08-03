@@ -7,4 +7,3 @@ export type ArtifactExecutionBindingV1 = Readonly<{
 export declare function bindArtifactExecutionScopeV1(context: ArtifactExecutionContextV1, scope: object): ArtifactExecutionContextV1;
 /** Internal service lookup for the current invocation only. */
 export declare function artifactExecutionBindingV1(context: ArtifactExecutionContextV1): ArtifactExecutionBindingV1 | undefined;
-//# sourceMappingURL=execution-context.d.ts.map

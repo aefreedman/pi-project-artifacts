@@ -214,4 +214,3 @@ function normalizedRootParams(ctx, params) {
 }
 function resolveTarget(base, value) { const cleaned = value.trim().replace(/^@(?=[^@])/u, ""); return path.isAbsolute(cleaned) ? path.resolve(cleaned) : path.resolve(base, cleaned); }
 function todoToolResult(result) { const text = JSON.stringify(result, null, 2); return { content: [{ type: "text", text }], details: { result, provenance: { canonical: { serviceId: "project-file-todos.v1", packageName: "@aefree/pi-project-artifacts", packageVersion: "0.1.0", contractVersion: 1 } } } }; }
-//# sourceMappingURL=index.js.map

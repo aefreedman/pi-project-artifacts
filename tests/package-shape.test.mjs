@@ -30,7 +30,9 @@ test("package exposes one canonical Pi extension, three package-owned skills, an
     "skills/file-todos/references/work-logs.md",
   ]) assert(existsSync(new URL(`../${resource}`, import.meta.url)), `Missing packaged skill resource: ${resource}`);
   assert(manifest.files.includes("docs"), "public provider-development docs must be packed");
+  assert.equal(manifest.private, undefined, "release package must not retain the npm publication guard");
   assert.equal(manifest.files.includes("src"), false, "authored source is repository-only; consumers use dist runtime and declarations");
+  assert.equal(manifest.files.includes("evals"), false, "behavioral evals are repository-only development assets");
   assert.deepEqual(Object.keys(manifest.exports).sort(), [".", "./contracts", "./contracts/v1", "./contracts/v1/conformance", "./core", "./pi"]);
 });
 

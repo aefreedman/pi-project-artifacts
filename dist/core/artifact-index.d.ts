@@ -105,4 +105,3 @@ export declare function trackArtifactToolResult(event: unknown, cwd: string): vo
 export declare function commandMayMutateArtifacts(command: unknown): boolean;
 /** Removes credentials from metadata returned to callers while preserving safe fields. */
 export declare function safeFrontmatterForDisplay(frontmatter: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>>;
-//# sourceMappingURL=artifact-index.d.ts.map

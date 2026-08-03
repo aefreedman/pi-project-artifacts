@@ -119,4 +119,3 @@ export function requireComposableProfiles(resolution) {
         throw new Error(`duplicate_profile: Multiple artifact-profile registrations conflict (${resolution.providerIds.join(", ")}).`);
     }
 }
-//# sourceMappingURL=artifact-search.js.map

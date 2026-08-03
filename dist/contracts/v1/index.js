@@ -658,4 +658,3 @@ function asObject(value, label) {
     return value;
 }
 function fail(message) { throw new TypeError(message); }
-//# sourceMappingURL=index.js.map
