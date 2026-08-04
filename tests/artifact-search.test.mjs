@@ -408,7 +408,7 @@ test("compact describe enumerates mature-project fields without samples, while f
 test("frontmatter text search matches values only and result metadata is relevant and bounded", async () => {
   const root = await fixture();
   try {
-    await put(root, "docs/metadata.md", "---\nfailure_mode: runtime_exception\nrare_signal: targetneedle\nmodule: unrelated-module\ncomponent: unrelated-component\nseverity: high\ntags: [unrelated-tag]\n---\n# Metadata\n");
+    await put(root, "docs/metadata.md", `---\nfailure_mode: runtime_exception\nrare_signal: targetneedle\nlong_context: targetneedle-${"x".repeat(300)}\nmodule: unrelated-module\ncomponent: unrelated-component\nseverity: high\ntags: [unrelated-tag]\n---\n# Metadata\n`);
     await put(root, "todos/001-ready-p1-metadata.md", "---\nstatus: ready\npriority: p1\ntags: [targetneedle, another-tag, third-tag, fourth-tag, fifth-tag]\nmodule: unrelated-module\n---\n# Todo\n\ntargetneedle\n");
     const nameOnly = await executeArtifactSearch(context(root), { query: "failure mode", searchFields: ["frontmatter"], freshnessMode: "strict" }, missingProfiles());
     assert.equal(nameOnly.details.resultCount, 0, "field labels alone must not produce general text matches");
@@ -417,7 +417,13 @@ test("frontmatter text search matches values only and result metadata is relevan
     const result = await executeArtifactSearch(context(root), { query: "targetneedle", freshnessMode: "strict" }, missingProfiles());
     const doc = result.details.results.find((entry) => entry.path === "docs/metadata.md");
     const todo = result.details.results.find((entry) => entry.path === "todos/001-ready-p1-metadata.md");
-    assert.deepEqual(doc.metadataFacets.items.map((facet) => facet.field), ["rare_signal"]);
+    assert.deepEqual(doc.metadataFacets.items.map((facet) => facet.field), ["long_context", "rare_signal"]);
+    const longFacet = doc.metadataFacets.items.find((facet) => facet.field === "long_context");
+    assert.equal(longFacet.values[0].length, 120);
+    assert.equal(longFacet.shortenedValues, 1);
+    assert.equal(longFacet.truncated, true);
+    assert.match(result.text, /long_context=.*1 shortened/);
+    assert.equal(result.text.includes("x".repeat(121)), false, "compact output must not retain an overlong metadata scalar");
     assert(todo.metadataFacets.items.some((facet) => facet.field === "tags" && facet.values.length <= 4));
     assert(todo.metadataFacets.items.some((facet) => facet.field === "status"));
     assert(todo.metadataFacets.items.some((facet) => facet.field === "priority"));

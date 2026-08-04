@@ -37,6 +37,7 @@ export type ArtifactMetadataFacet = Readonly<{
     values: readonly string[];
     totalValues: number;
     omittedValues: number;
+    shortenedValues: number;
     truncated: boolean;
 }>;
 export type ArtifactMetadataFacets = Readonly<{

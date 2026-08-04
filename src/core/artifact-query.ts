@@ -7,6 +7,7 @@ import { stringValues } from "./markdown.js";
 const DEFAULT_LIMIT = 20;
 const DEFAULT_SNIPPET_CHARS = 220;
 const PREPARED_LIMIT = 100;
+const MAX_METADATA_FACET_VALUE_CHARS = 120;
 const FIELD_WEIGHTS = Object.freeze({ title: 10, tags: 8, frontmatter: 6, headings: 4, path: 3, body: 1, phraseBonus: 5 });
 const SEVERITY_BOOSTS: Readonly<Record<string, number>> = Object.freeze({ critical: 3, high: 2, medium: 1, low: 0.25 });
 const TODO_STATUS_BOOSTS: Readonly<Record<string, number>> = Object.freeze({ ready: 3, pending: 2, complete: -0.5, blocked: -1 });
@@ -42,7 +43,7 @@ export type FilterFieldSemantics = Readonly<{
   profilesTruncated: boolean;
 }>;
 export type FilterSemanticsSummary = Readonly<{ items: readonly FilterFieldSemantics[]; total: number; omitted: number; truncated: boolean }>;
-export type ArtifactMetadataFacet = Readonly<{ field: string; values: readonly string[]; totalValues: number; omittedValues: number; truncated: boolean }>;
+export type ArtifactMetadataFacet = Readonly<{ field: string; values: readonly string[]; totalValues: number; omittedValues: number; shortenedValues: number; truncated: boolean }>;
 export type ArtifactMetadataFacets = Readonly<{ items: readonly ArtifactMetadataFacet[]; total: number; omitted: number; truncated: boolean }>;
 export type ProfileValidationEvidence = Readonly<{ profileId: string; outcome: "valid" | "invalid" | "conflict" | "unavailable" | "error" }>;
 export type ProfileValidationSummary = Readonly<{ items: readonly ProfileValidationEvidence[]; total: number; omitted: number; truncated: boolean }>;
@@ -349,8 +350,15 @@ function metadataFacetsFor(entry: ArtifactIndexEntryV1, frontmatter: Readonly<Re
   const todoOrder = (field: string) => entry.kind === "todo" && field === "status" ? 0 : entry.kind === "todo" && field === "priority" ? 1 : 2;
   const all = [...facets.entries()].sort(([left], [right]) => todoOrder(left) - todoOrder(right) || left.localeCompare(right));
   const items = all.slice(0, 8).map(([field, values]) => {
-    const shown = values.slice(0, field === "tags" ? 4 : 3);
-    return Object.freeze({ field, values: Object.freeze(shown), totalValues: values.length, omittedValues: Math.max(0, values.length - shown.length), truncated: values.length > shown.length });
+    const selected = values.slice(0, field === "tags" ? 4 : 3);
+    let shortenedValues = 0;
+    const shown = selected.map((value) => {
+      if (value.length <= MAX_METADATA_FACET_VALUE_CHARS) return value;
+      shortenedValues += 1;
+      return `${value.slice(0, MAX_METADATA_FACET_VALUE_CHARS - 1)}…`;
+    });
+    const omittedValues = Math.max(0, values.length - shown.length);
+    return Object.freeze({ field, values: Object.freeze(shown), totalValues: values.length, omittedValues, shortenedValues, truncated: omittedValues > 0 || shortenedValues > 0 });
   });
   return Object.freeze({ items: Object.freeze(items), total: all.length, omitted: Math.max(0, all.length - items.length), truncated: all.length > items.length });
 }
@@ -363,7 +371,9 @@ function profileValidationSummary(data: readonly ProfileEntryData[]): ProfileVal
 function metadataFacetSummary(facets: ArtifactMetadataFacets, compact: boolean): string {
   const text = facets.items.map((facet) => {
     const label = compact && facet.field === "priority" ? "prio" : facet.field;
-    return `${label}=${facet.values.join(", ")}${facet.truncated ? `, +${facet.omittedValues} omitted` : ""}`;
+    const omissions = facet.omittedValues > 0 ? `, +${facet.omittedValues} omitted` : "";
+    const shortened = facet.shortenedValues > 0 ? `, ${facet.shortenedValues} shortened` : "";
+    return `${label}=${facet.values.join(", ")}${omissions}${shortened}`;
   }).join("; ");
   return `${text}${facets.truncated ? `${text ? "; " : ""}+${facets.omitted} facets omitted` : ""}`;
 }
