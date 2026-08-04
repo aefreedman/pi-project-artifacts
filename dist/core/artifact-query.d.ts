@@ -1,5 +1,5 @@
 import type { ArtifactFieldDefinitionV1, ArtifactProfileV1, ArtifactSearchRequestV1 } from "../contracts/v1/index.js";
-import { type ArtifactCacheState, type ArtifactIndexV1, type ArtifactKind, type FreshnessMode, type ProfileEntryData } from "./artifact-index.js";
+import { type ArtifactCacheState, type ArtifactIndexV1, type ArtifactKind, type FreshnessMode } from "./artifact-index.js";
 export declare const BODY_PREVIEW_SEARCH_CHARS = 1200;
 export type ArtifactFieldDescription = Readonly<{
     name: string;
@@ -22,7 +22,38 @@ export type FilterFieldSemantics = Readonly<{
         profileId: string;
         outcome: "valid" | "invalid" | "conflict" | "unavailable" | "error";
     }>[];
+    totalProfiles: number;
+    omittedProfiles: number;
     profilesTruncated: boolean;
+}>;
+export type FilterSemanticsSummary = Readonly<{
+    items: readonly FilterFieldSemantics[];
+    total: number;
+    omitted: number;
+    truncated: boolean;
+}>;
+export type ArtifactMetadataFacet = Readonly<{
+    field: string;
+    values: readonly string[];
+    totalValues: number;
+    omittedValues: number;
+    truncated: boolean;
+}>;
+export type ArtifactMetadataFacets = Readonly<{
+    items: readonly ArtifactMetadataFacet[];
+    total: number;
+    omitted: number;
+    truncated: boolean;
+}>;
+export type ProfileValidationEvidence = Readonly<{
+    profileId: string;
+    outcome: "valid" | "invalid" | "conflict" | "unavailable" | "error";
+}>;
+export type ProfileValidationSummary = Readonly<{
+    items: readonly ProfileValidationEvidence[];
+    total: number;
+    omitted: number;
+    truncated: boolean;
 }>;
 export type ArtifactSearchItem = Readonly<{
     path: string;
@@ -30,11 +61,13 @@ export type ArtifactSearchItem = Readonly<{
     title?: string;
     score: number;
     snippet?: string;
-    frontmatter: Readonly<Record<string, unknown>>;
+    /** Query-relevant safe metadata only; full frontmatter remains source-only. */
+    metadataFacets: ArtifactMetadataFacets;
     reasons: readonly string[];
     related?: readonly RelatedArtifact[];
-    profileValidation: readonly ProfileEntryData[];
-    filterSemantics?: readonly FilterFieldSemantics[];
+    /** Bounded outcome-only profile evidence; validation payloads remain internal. */
+    profileValidation: ProfileValidationSummary;
+    filterSemantics?: FilterSemanticsSummary;
 }>;
 export type RelatedArtifact = Readonly<{
     path: string;
@@ -64,4 +97,4 @@ export declare function formatArtifactResults(result: ArtifactQueryResult, reque
 }): string;
 export declare function groupByKind(results: readonly ArtifactSearchItem[]): Readonly<Record<string, readonly ArtifactSearchItem[]>>;
 export declare function suggestedRg(request: ArtifactSearchRequestV1): string | undefined;
-export declare function controlsFor(request: ArtifactSearchRequestV1, fieldDefinitions: readonly ArtifactFieldDescription[]): Readonly<Record<string, unknown>>;
+export declare function controlsFor(request: ArtifactSearchRequestV1): Readonly<Record<string, unknown>>;

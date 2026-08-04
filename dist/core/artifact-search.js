@@ -1,5 +1,6 @@
 import { artifactCacheState, buildOrRefreshIndex, observedFieldCatalog } from "./artifact-index.js";
-import { BODY_PREVIEW_SEARCH_CHARS, controlsFor, describeArtifactFields, formatArtifactResults, groupByKind, searchArtifactIndex, suggestedRg } from "./artifact-query.js";
+import { BODY_PREVIEW_SEARCH_CHARS, controlsFor, describeArtifactFields, formatArtifactResults, searchArtifactIndex, suggestedRg } from "./artifact-query.js";
+const MAX_DESCRIBE_FIELD_NAMES = 20;
 export const ARTIFACT_SEARCH_SERVICE_ID = "project-artifact-search.v1";
 export const ARTIFACTS_PACKAGE_NAME = "@aefree/pi-project-artifacts";
 export const ARTIFACTS_PACKAGE_VERSION = "0.1.0";
@@ -23,11 +24,9 @@ export async function executeArtifactSearch(context, request, profileResolution)
     return Object.freeze({
         text,
         details: Object.freeze({
-            query: request.query,
-            requiredTerms: request.requiredTerms,
-            optionalTerms: request.optionalTerms,
+            query: boundedText(request.query),
             scopes: request.scopes ?? ["all"],
-            filters: request.filters ?? {},
+            filterRequest: boundedFilterRequest(request.filters),
             indexPath: refresh.indexPath.replaceAll("\\", "/"),
             refreshed: refresh.refreshed,
             fastPath: refresh.fastPath,
@@ -35,25 +34,24 @@ export async function executeArtifactSearch(context, request, profileResolution)
             freshnessMode: refresh.freshnessMode,
             refreshStats: refresh.stats,
             rootIdentity: refresh.index.rootIdentity,
-            orphanTempsRemoved: refresh.orphanTempsRemoved.map((entry) => entry.replaceAll("\\", "/")),
+            orphanTempsRemoved: boundedList(refresh.orphanTempsRemoved.map((entry) => entry.replaceAll("\\", "/")), 8),
             totalIndexedFiles: Object.keys(refresh.index.files).length,
             resultCount: query.totalMatches,
             preparedResultCount: query.preparedMatches,
             returnedResultCount: returned.length,
             results: returned,
-            groups: request.groupByKind ? groupByKind(returned) : undefined,
+            groupCounts: request.groupByKind ? groupCounts(returned) : undefined,
             suggestedRg: suggestedRg(request),
             searchCoverage: Object.freeze({ body: Object.freeze({ mode: "preview_only", indexedCharactersPerDocument: BODY_PREVIEW_SEARCH_CHARS, exhaustiveSearch: "Run suggestedRg and then read matching Markdown files directly; terms beyond the preview are not indexed." }) }),
-            fieldDefinitions: query.fieldDefinitions,
-            observedFieldCatalog: observedFieldCatalog(refresh.index),
-            validationDiagnostics: validationDiagnostics(refresh.index, returned),
-            controls: controlsFor(request, query.fieldDefinitions),
+            filtering: Object.freeze({ exactNormalizedMatching: true, schemaOpen: true, knownProfileFieldCount: query.fieldDefinitions.length }),
+            validationDiagnostics: validationDiagnostics(refresh.index, returned.map((entry) => entry.path)),
+            controls: controlsFor(request),
         }),
         provenance,
     });
 }
 export function buildProvenance(index, profiles, resolution) {
-    const profileRows = profiles.map((profile) => Object.freeze({
+    const allProfileRows = profiles.map((profile) => Object.freeze({
         profileId: profile.id,
         packageName: profile.owner.packageName,
         packageVersion: profile.owner.packageVersion,
@@ -63,6 +61,7 @@ export function buildProvenance(index, profiles, resolution) {
             ? "applied"
             : "not_applicable",
     })).sort((left, right) => left.profileId.localeCompare(right.profileId));
+    const profileRows = allProfileRows.slice(0, 8);
     const fallbacks = [];
     if (resolution.outcome === "missing")
         fallbacks.push({ code: "artifact_profiles_missing", action: "used", summary: "Generic artifact search continued without optional artifact profiles." });
@@ -77,29 +76,99 @@ export function buildProvenance(index, profiles, resolution) {
         version: 1,
         canonical: Object.freeze({ serviceId: ARTIFACT_SEARCH_SERVICE_ID, packageName: ARTIFACTS_PACKAGE_NAME, packageVersion: ARTIFACTS_PACKAGE_VERSION, contractVersion: 1 }),
         profiles: Object.freeze(profileRows),
+        profileSummary: Object.freeze({ total: allProfileRows.length, returned: profileRows.length, omitted: Math.max(0, allProfileRows.length - profileRows.length), truncated: allProfileRows.length > profileRows.length }),
         fallbacks: Object.freeze(fallbacks),
         executionGate: resolution.outcome === "duplicate" ? "blocked" : "executed",
     });
 }
-function validationDiagnostics(index, returned) {
+function validationDiagnostics(index, returnedPaths) {
     const summarize = (entries) => {
         const byOutcome = { valid: 0, invalid: 0, conflict: 0, unavailable: 0, error: 0 };
-        const diagnostics = [];
+        const warnings = [];
         for (const entry of entries)
-            for (const profile of entry.profileValidation) {
+            for (const profile of entry.profileData) {
                 byOutcome[profile.validation.outcome] = (byOutcome[profile.validation.outcome] ?? 0) + 1;
                 if (profile.validation.outcome !== "valid")
-                    diagnostics.push({ path: entry.path, profileId: profile.profileId, packageName: profile.packageName, packageVersion: profile.packageVersion, outcome: profile.validation.outcome, validation: profile.validation });
+                    warnings.push({ path: entry.path, profileId: profile.profileId, outcome: profile.validation.outcome });
             }
-        diagnostics.sort((left, right) => left.path.localeCompare(right.path) || left.profileId.localeCompare(right.profileId));
-        return Object.freeze({ byOutcome: Object.freeze(byOutcome), diagnostics: Object.freeze(diagnostics) });
+        warnings.sort((left, right) => left.path.localeCompare(right.path) || left.profileId.localeCompare(right.profileId));
+        const evidence = warnings.slice(0, 8);
+        return Object.freeze({ byOutcome: Object.freeze(byOutcome), warningTotal: warnings.length, warningEvidence: Object.freeze(evidence), warningEvidenceReturned: evidence.length, warningEvidenceOmitted: Math.max(0, warnings.length - evidence.length), warningEvidenceTruncated: warnings.length > evidence.length });
     };
-    return Object.freeze({ indexed: summarize(Object.values(index.files).map((entry) => ({ path: entry.path, profileValidation: entry.profileData }))), returned: summarize(returned) });
+    const returned = returnedPaths.flatMap((entryPath) => {
+        const entry = index.files[entryPath];
+        return entry === undefined ? [] : [{ path: entry.path, profileData: entry.profileData }];
+    });
+    return Object.freeze({ indexed: summarize(Object.values(index.files).map((entry) => ({ path: entry.path, profileData: entry.profileData }))), returned: summarize(returned) });
+}
+function groupCounts(results) {
+    const counts = {};
+    for (const result of results)
+        counts[result.kind] = (counts[result.kind] ?? 0) + 1;
+    return Object.freeze(Object.fromEntries(Object.entries(counts).sort(([left], [right]) => left.localeCompare(right))));
+}
+function boundedFilterRequest(filters) {
+    const all = Object.keys(filters ?? {}).sort();
+    const fields = all.slice(0, 8);
+    return Object.freeze({ total: all.length, fields: Object.freeze(fields), omitted: Math.max(0, all.length - fields.length), truncated: all.length > fields.length });
+}
+function boundedText(value) {
+    if (value === undefined)
+        return Object.freeze({ truncated: false });
+    const limit = 240;
+    return Object.freeze({ value: value.slice(0, limit), truncated: value.length > limit });
+}
+function boundedList(values, limit) {
+    const items = values.slice(0, limit);
+    return Object.freeze({ items: Object.freeze(items), total: values.length, omitted: Math.max(0, values.length - items.length), truncated: values.length > items.length });
+}
+function normalizeDescribeRequest(request) {
+    const outputMode = request.outputMode ?? "compact";
+    if (outputMode !== "compact" && outputMode !== "detailed")
+        throw new TypeError("describe outputMode must be compact or detailed");
+    const includeSamples = request.includeSamples === true;
+    if (request.includeSamples !== undefined && typeof request.includeSamples !== "boolean")
+        throw new TypeError("describe includeSamples must be boolean");
+    if (request.fieldNames !== undefined && !Array.isArray(request.fieldNames))
+        throw new TypeError("describe fieldNames must be an array");
+    const fieldNames = request.fieldNames?.map((field) => {
+        if (typeof field !== "string" || field.trim() === "" || field !== field.trim() || !/^[A-Za-z0-9_-]+$/u.test(field))
+            throw new TypeError("describe fieldNames must contain non-empty exact top-level field names");
+        return field;
+    });
+    if (fieldNames !== undefined && (fieldNames.length === 0 || fieldNames.length > MAX_DESCRIBE_FIELD_NAMES))
+        throw new TypeError(`describe fieldNames must contain 1-${MAX_DESCRIBE_FIELD_NAMES} names`);
+    if (fieldNames !== undefined && new Set(fieldNames).size !== fieldNames.length)
+        throw new TypeError("describe fieldNames must not contain duplicates");
+    if (includeSamples && outputMode !== "detailed")
+        throw new TypeError("describe includeSamples requires outputMode detailed");
+    if (includeSamples && fieldNames === undefined)
+        throw new TypeError("describe includeSamples requires a non-empty focused fieldNames list");
+    return Object.freeze({ ...request, outputMode, includeSamples, ...(fieldNames === undefined ? {} : { fieldNames: Object.freeze([...fieldNames].sort((left, right) => left.localeCompare(right))) }) });
+}
+/** A deterministic agent-facing summary, deliberately smaller than structured details. */
+export function formatArtifactWorkspaceDescription(description) {
+    const definitions = description.fields.map((field) => {
+        const owner = field.owner.kind === "profile" ? `; profile=${field.owner.profileId ?? field.owner.packageName}` : "; generic";
+        return `${field.name} (${field.type}${owner})`;
+    }).join("\n");
+    const availability = description.profileAvailability.map((profile) => `${profile.profileId}=${profile.decision}`).join("; ");
+    const catalog = description.observedFieldCatalog;
+    const observed = catalog.fields.map((field) => `${field.name} (${field.documentCount})${field.sampleValues ? `: ${field.sampleValues.join(", ") || "[suppressed]"}` : ""}`).join("\n");
+    return [
+        `Describe mode=${description.outputMode}; samples=${description.samplesIncluded ? "included" : "omitted"}.`,
+        `Known field definitions (${description.fields.length}):`,
+        definitions || "(none)",
+        `Profile availability (${description.profileAvailability.length}): ${availability || "none"}`,
+        `Observed fields: ${catalog.returnedFieldCount}/${catalog.totalFieldCount}; omitted=${catalog.omittedFieldCount}; truncated=${catalog.truncated}.`,
+        observed || "(none)",
+    ].join("\n");
 }
 /** Canonical describe path: use the same contained, disposable index as search. */
 export async function describeArtifactWorkspace(context, request, profileResolution) {
+    const describeRequest = normalizeDescribeRequest(request);
     const profiles = profileResolution.outcome === "available" ? profileResolution.records : [];
-    const refresh = await buildOrRefreshIndex(request, context, profiles);
+    const refresh = await buildOrRefreshIndex(describeRequest, context, profiles);
     const applied = new Set(Object.values(refresh.index.files).flatMap((entry) => entry.profileData.map((data) => `${data.profileId}\0${data.packageName}\0${data.packageVersion}`)));
     const applicable = profiles.filter((profile) => applied.has(`${profile.id}\0${profile.owner.packageName}\0${profile.owner.packageVersion}`));
     const profileAvailability = profiles.map((profile) => Object.freeze({
@@ -111,7 +180,14 @@ export async function describeArtifactWorkspace(context, request, profileResolut
         fields: describeArtifactFields(applicable),
         profileAvailability: Object.freeze(profileAvailability),
         profileResolution: Object.freeze({ outcome: profileResolution.outcome, providerIds: profileResolution.outcome === "available" ? profiles.map((profile) => profile.id).sort() : profileResolution.providerIds }),
-        observedFieldCatalog: observedFieldCatalog(refresh.index),
+        observedFieldCatalog: observedFieldCatalog(refresh.index, {
+            ...(describeRequest.fieldNames === undefined ? {} : { fieldNames: describeRequest.fieldNames }),
+            detailed: describeRequest.outputMode === "detailed",
+            includeSamples: describeRequest.includeSamples === true,
+        }),
+        outputMode: describeRequest.outputMode,
+        samplesIncluded: describeRequest.includeSamples === true,
+        ...(describeRequest.fieldNames === undefined ? {} : { focusedFieldNames: describeRequest.fieldNames }),
         indexPath: refresh.indexPath.replaceAll("\\", "/"),
         refreshed: refresh.refreshed,
         fastPath: refresh.fastPath,

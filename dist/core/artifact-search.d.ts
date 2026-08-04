@@ -1,5 +1,5 @@
-import type { ArtifactExecutionContextV1, ArtifactExecutionProvenanceV1, ArtifactProfileV1, ArtifactSearchRequestV1, ArtifactSearchResultV1, ContractResolutionV1 } from "../contracts/v1/index.js";
-import { type ArtifactCacheState, type IndexRequest, type ObservedFieldCatalog, type RefreshResult } from "./artifact-index.js";
+import type { ArtifactDescribeRequestV1, ArtifactExecutionContextV1, ArtifactExecutionProvenanceV1, ArtifactProfileV1, ArtifactSearchRequestV1, ArtifactSearchResultV1, ContractResolutionV1 } from "../contracts/v1/index.js";
+import { type ArtifactCacheState, type ObservedFieldCatalog, type RefreshResult } from "./artifact-index.js";
 import { type ArtifactFieldDescription } from "./artifact-query.js";
 export declare const ARTIFACT_SEARCH_SERVICE_ID: "project-artifact-search.v1";
 export declare const ARTIFACTS_PACKAGE_NAME: "@aefree/pi-project-artifacts";
@@ -8,6 +8,8 @@ export type ArtifactProfileResolution = ContractResolutionV1<ArtifactProfileV1>;
 /** Canonical search composition. It never imports a provider package. */
 export declare function executeArtifactSearch(context: ArtifactExecutionContextV1, request: ArtifactSearchRequestV1, profileResolution: ArtifactProfileResolution): Promise<ArtifactSearchResultV1>;
 export declare function buildProvenance(index: RefreshResult["index"], profiles: readonly ArtifactProfileV1[], resolution: ArtifactProfileResolution): ArtifactExecutionProvenanceV1;
+/** A deterministic agent-facing summary, deliberately smaller than structured details. */
+export declare function formatArtifactWorkspaceDescription(description: ArtifactWorkspaceDescription): string;
 export type ArtifactWorkspaceDescription = Readonly<{
     workspaceRoot: string;
     fields: readonly ArtifactFieldDescription[];
@@ -19,6 +21,9 @@ export type ArtifactWorkspaceDescription = Readonly<{
     }[];
     profileResolution: Readonly<Record<string, unknown>>;
     observedFieldCatalog: ObservedFieldCatalog;
+    outputMode: "compact" | "detailed";
+    samplesIncluded: boolean;
+    focusedFieldNames?: readonly string[];
     indexPath: string;
     refreshed: boolean;
     fastPath: boolean;
@@ -27,5 +32,5 @@ export type ArtifactWorkspaceDescription = Readonly<{
     refreshStats: RefreshResult["stats"];
 }>;
 /** Canonical describe path: use the same contained, disposable index as search. */
-export declare function describeArtifactWorkspace(context: ArtifactExecutionContextV1, request: IndexRequest, profileResolution: ArtifactProfileResolution): Promise<ArtifactWorkspaceDescription>;
+export declare function describeArtifactWorkspace(context: ArtifactExecutionContextV1, request: ArtifactDescribeRequestV1, profileResolution: ArtifactProfileResolution): Promise<ArtifactWorkspaceDescription>;
 export declare function requireComposableProfiles(resolution: ArtifactProfileResolution): void;

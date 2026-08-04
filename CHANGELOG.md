@@ -7,7 +7,8 @@
 - Canonical `project_artifact_describe` and `project_artifact_search` Pi tools for authoritative project Markdown under configurable, workspace-contained docs and todos roots.
 - Schema-open top-level frontmatter discovery and normalized exact filtering, with mixed project schemas supported in one workspace.
 - Optional artifact profiles that contribute field definitions, applicability, validation provenance, and agent-visible `raw_exact`, `profile_validated`, or `profile_warning` confidence without gating raw metadata access.
-- Bounded, privacy-safe observed-field catalogs with counts, inferred primitive types, distinct counts, and credential-suppressed samples.
+- Progressive-disclosure observed-field catalogs: compact discovery lists every field name/count, while detailed focused inspection adds bounded types, cardinality, and credential/path-suppressed samples.
+- Context-aware search metadata that reports query/filter-relevant facets, todo state, bounded profile evidence, and explicit truncation instead of repeating fixed labels or complete frontmatter.
 - Preview-based body indexing with explicit direct-`rg` and source-read guidance for exhaustive or final evidence.
 - Explicit cache-state reporting for auto-TTL reuse, memory reuse, unchanged validation scans, and rebuilds, plus consumer `.gitignore` guidance for disposable indexes.
 - Compact default TUI rendering for artifact and todo tool results, with full output available through Pi's standard expanded-tool toggle.

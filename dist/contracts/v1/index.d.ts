@@ -22,6 +22,7 @@ export interface ArtifactExecutionProvenanceV1 {
         readonly packageVersion: string;
         readonly contractVersion: 1;
     };
+    /** Bounded provenance rows; summary discloses any omitted providers. */
     readonly profiles: readonly {
         readonly profileId: string;
         readonly packageName: string;
@@ -29,6 +30,12 @@ export interface ArtifactExecutionProvenanceV1 {
         readonly contractVersion: 1;
         readonly decision: "applied" | "not_applicable" | "blocked";
     }[];
+    readonly profileSummary?: Readonly<{
+        total: number;
+        returned: number;
+        omitted: number;
+        truncated: boolean;
+    }>;
     readonly fallbacks: readonly {
         readonly code: string;
         readonly action: "used" | "blocked" | "not_needed";
@@ -129,6 +136,12 @@ export interface ArtifactDescribeRequestV1 {
     readonly indexPath?: string;
     readonly freshnessMode?: "auto" | "strict" | "memory";
     readonly freshnessTtlMs?: number;
+    /** Compact lists every observed name/count and always omits examples; detailed adds type/cardinality evidence. */
+    readonly outputMode?: "compact" | "detailed";
+    /** One to 20 unique exact top-level field names; required when includeSamples is true. */
+    readonly fieldNames?: readonly string[];
+    /** Requires detailed mode and fieldNames; opts into up to three safe scalar examples per selected field. */
+    readonly includeSamples?: boolean;
     readonly rebuild?: boolean;
 }
 export interface ArtifactDescribeResultV1 {

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createArtifactProfileRegistryV1, resolveArtifactProfilesV1 } from "../dist/contracts/v1/index.js";
-import { buildOrRefreshIndex, executeArtifactSearch, trackArtifactToolResult } from "../dist/core/index.js";
+import { buildOrRefreshIndex, describeArtifactWorkspace, executeArtifactSearch, trackArtifactToolResult } from "../dist/core/index.js";
 
 const context = (cwd) => ({ cwd, signal: new AbortController().signal });
 const missingProfiles = (scope = {}) => resolveArtifactProfilesV1(scope);
@@ -112,7 +112,7 @@ test("malformed frontmatter remains searchable and generic search survives missi
     await put(root, "docs/raw.md", "---\nfailure-mode: runtime_exception\n---\n# Raw\n");
     const raw = await executeArtifactSearch(context(root), { filters: { "failure-mode": "runtime_exception" }, freshnessMode: "strict" }, missingProfiles());
     assert.deepEqual(raw.details.results.map((entry) => entry.path), ["docs/raw.md"]);
-    assert.equal(raw.details.results[0].filterSemantics[0].confidence, "raw_exact");
+    assert.equal(raw.details.results[0].filterSemantics.items[0].confidence, "raw_exact");
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -160,7 +160,7 @@ test("mixed Unity, Unreal, and custom metadata remains independently raw-filtera
     for (const [engine, pathname] of [["Unity", "docs/solutions/unity.md"], ["Unreal", "docs/plans/unreal.md"], ["Custom", "docs/custom.md"]]) {
       const result = await executeArtifactSearch(context(root), { filters: { engine }, freshnessMode: "strict" }, resolution);
       assert.deepEqual(result.details.results.map((entry) => entry.path), [pathname]);
-      assert.equal(result.details.results[0].filterSemantics[0].confidence, "profile_validated");
+      assert.equal(result.details.results[0].filterSemantics.items[0].confidence, "profile_validated");
     }
   } finally { await rm(root, { recursive: true, force: true }); }
 });
@@ -209,17 +209,17 @@ test("filters remain raw-open while profile validation diagnostics stay visible"
     assert.equal(exact.details.resultCount, 0);
     const typed = await executeArtifactSearch(context(root), { filters: { attempts: "2", mode: "safe" }, freshnessMode: "strict" }, resolution);
     assert.deepEqual(typed.details.results.map((entry) => entry.path), ["docs/one.md"]);
-    assert.deepEqual(typed.details.results[0].profileValidation.map((entry) => entry.validation.outcome), ["invalid"]);
+    assert.deepEqual(typed.details.results[0].profileValidation.items.map((entry) => entry.outcome), ["invalid"]);
     assert.equal(typed.details.validationDiagnostics.indexed.byOutcome.invalid, 1);
     assert.equal(typed.details.validationDiagnostics.indexed.byOutcome.unavailable, 1);
-    assert.equal(typed.details.validationDiagnostics.indexed.diagnostics.length, 2);
+    assert.equal(typed.details.validationDiagnostics.indexed.warningEvidence.length, 2);
     const openType = await executeArtifactSearch(context(root), { filters: { attempts: "two" }, freshnessMode: "strict" }, resolution);
     const openEnum = await executeArtifactSearch(context(root), { filters: { mode: "unsafe" }, freshnessMode: "strict" }, resolution);
     assert.equal(openType.details.resultCount, 0);
     assert.equal(openEnum.details.resultCount, 0);
-    assert.equal(typed.details.results[0].filterSemantics.find((field) => field.field === "attempts").confidence, "profile_warning");
+    assert.equal(typed.details.results[0].filterSemantics.items.find((field) => field.field === "attempts").confidence, "profile_warning");
     const unavailable = await executeArtifactSearch(context(root), { filters: { attempts: "3" }, freshnessMode: "strict" }, resolution);
-    assert.equal(unavailable.details.results[0].filterSemantics[0].confidence, "profile_warning");
+    assert.equal(unavailable.details.results[0].filterSemantics.items[0].confidence, "profile_warning");
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -255,8 +255,8 @@ test("profile-owned filters require applicable profile data, refresh dynamic pro
     assert.equal(initial.provenance.profiles.find((profile) => profile.profileId === "fixture.inactive-status")?.decision, "not_applicable");
     const owned = await executeArtifactSearch(context(root), { filters: { owned_field: "yes" }, freshnessMode: "strict" }, resolution);
     assert.deepEqual(owned.details.results.map((entry) => entry.path), ["docs/owned.md", "docs/raw.md"], "raw frontmatter remains open even where a profile defines the field");
-    assert.equal(owned.details.results.find((entry) => entry.path === "docs/owned.md").filterSemantics[0].confidence, "profile_validated");
-    assert.equal(owned.details.results.find((entry) => entry.path === "docs/raw.md").filterSemantics[0].confidence, "raw_exact");
+    assert.equal(owned.details.results.find((entry) => entry.path === "docs/owned.md").filterSemantics.items[0].confidence, "profile_validated");
+    assert.equal(owned.details.results.find((entry) => entry.path === "docs/raw.md").filterSemantics.items[0].confidence, "raw_exact");
     const generic = await executeArtifactSearch(context(root), { filters: { status: "review", priority: "urgent", severity: "notice" }, freshnessMode: "strict" }, resolution);
     assert.deepEqual(generic.details.results.map((entry) => entry.path), ["docs/owned.md"]);
 
@@ -268,12 +268,12 @@ test("profile-owned filters require applicable profile data, refresh dynamic pro
     applies = false;
     const stillRaw = await executeArtifactSearch(context(root), { filters: { owned_field: "yes" }, freshnessMode: "strict" }, resolution);
     assert.equal(stillRaw.details.resultCount, 2);
-    assert(stillRaw.details.results.every((entry) => entry.filterSemantics[0].confidence === "raw_exact"));
+    assert(stillRaw.details.results.every((entry) => entry.filterSemantics.items[0].confidence === "raw_exact"));
     const stable = await executeArtifactSearch(context(root), { freshnessMode: "strict" }, resolution);
     assert.equal(stable.details.refreshed, false, "unchanged profile results should not rewrite the index");
     assert.equal(stable.details.refreshStats.updated, 0);
     assert.equal(stable.provenance.profiles.find((profile) => profile.profileId === "fixture.owned")?.decision, "not_applicable");
-    assert.equal(stable.details.controls.filters.fields.some((field) => field.name === "owned_field"), true, "registered profile schemas remain visible even when no current artifact applies");
+    assert.equal(stable.details.filtering.knownProfileFieldCount >= 7, true, "search retains only a bounded count of registered profile schemas");
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -295,40 +295,31 @@ test("generic/profile and profile/profile collisions remain open raw filters wit
     for (const field of ["status", "phase"]) {
       const result = await executeArtifactSearch(context(root), { filters: { [field]: field === "status" ? "review" : "alpha" }, freshnessMode: "strict" }, resolution);
       assert.equal(result.details.resultCount, 1);
-      assert.equal(result.details.results[0].filterSemantics[0].confidence, "profile_validated");
-      assert.equal(result.details.results[0].filterSemantics[0].profiles.length, field === "phase" ? 2 : 1);
+      assert.equal(result.details.results[0].filterSemantics.items[0].confidence, "profile_validated");
+      assert.equal(result.details.results[0].filterSemantics.items[0].profiles.length, field === "phase" ? 2 : 1);
     }
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("observed metadata catalog is bounded and suppresses sensitive samples", async () => {
+test("focused detailed catalog and search details suppress credential-shaped neutral values", async () => {
   const root = await fixture();
   try {
-    const apiKey = "top-secret-value";
-    const accessKey = "another-secret";
-    const neutralCredential = ["AKIA", "IOSFODNN7EXAMPLE"].join("");
-    await put(root, "docs/one.md", `---\nengine: Unity\ntoken: ${apiKey}\napi_key: ${apiKey}\naccess_key: ${accessKey}\nopaque_value: ${neutralCredential}\nlong_value: ${"x".repeat(100)}\nflags: [true, false]\n---\n# One\n`);
+    const secrets = ["top-secret-value", ["AKIA", "IOSFODNN7EXAMPLE"].join(""), ["sk", "live", "123456789012345678901234"].join("_"), ["sk", "test", "123456789012345678901234"].join("_"), ["AI", "za12345678901234567890123456789012345"].join(""), ["gl", "pat-12345678901234567890"].join(""), "https://alice:password@example.test/path"];
+    await put(root, "docs/one.md", `---\nengine: Unity\ntoken: ${secrets[0]}\nopaque_aws: ${secrets[1]}\nopaque_stripe_live: ${secrets[2]}\nopaque_stripe_test: ${secrets[3]}\nopaque_google: ${secrets[4]}\nopaque_gitlab: ${secrets[5]}\nopaque_url: ${secrets[6]}\nlong_value: ${"x".repeat(100)}\nflags: [true, false]\n---\n# One\n`);
     await put(root, "docs/two.md", "---\nengine: Unreal\ntoken: another-secret\nflags: [true]\n---\n# Two\n");
-    const result = await executeArtifactSearch(context(root), { freshnessMode: "strict" }, missingProfiles());
-    const catalog = result.details.observedFieldCatalog;
+    const names = ["engine", "token", "opaque_aws", "opaque_stripe_live", "opaque_stripe_test", "opaque_google", "opaque_gitlab", "opaque_url", "long_value"];
+    const described = await describeArtifactWorkspace(context(root), { outputMode: "detailed", fieldNames: names, includeSamples: true, freshnessMode: "strict" }, missingProfiles());
+    const catalog = described.observedFieldCatalog;
     const engine = catalog.fields.find((field) => field.name === "engine");
-    const token = catalog.fields.find((field) => field.name === "token");
-    const longValue = catalog.fields.find((field) => field.name === "long_value");
-    const apiKeyField = catalog.fields.find((field) => field.name === "api_key");
-    const accessKeyField = catalog.fields.find((field) => field.name === "access_key");
-    const opaqueValue = catalog.fields.find((field) => field.name === "opaque_value");
     assert.deepEqual(engine.sampleValues, ["Unity", "Unreal"]);
     assert.equal(engine.documentCount, 2);
-    assert.deepEqual(token.sampleValues, []);
-    assert.deepEqual(apiKeyField.sampleValues, []);
-    assert.deepEqual(accessKeyField.sampleValues, []);
-    assert.deepEqual(opaqueValue.sampleValues, []);
-    assert.deepEqual(longValue.sampleValues, []);
-    assert.equal(JSON.stringify(result.details).includes(apiKey), false);
-    assert.equal(JSON.stringify(result.details).includes(accessKey), false);
-    assert.equal(JSON.stringify(result.details).includes(neutralCredential), false);
-    assert(catalog.fields.length <= 100);
-    assert(engine.distinctCount <= 100);
+    for (const name of names.filter((name) => name !== "engine")) assert.deepEqual(catalog.fields.find((field) => field.name === name).sampleValues, []);
+    const result = await executeArtifactSearch(context(root), { query: "one", freshnessMode: "strict" }, missingProfiles());
+    assert.equal("observedFieldCatalog" in result.details, false);
+    for (const secret of secrets) {
+      assert.equal(JSON.stringify(described).includes(secret), false);
+      assert.equal(JSON.stringify(result.details).includes(secret), false);
+    }
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -366,17 +357,99 @@ test("filter confidence includes every applicable profile before profile evidenc
       contractVersion: 1, id, kind: "artifact-profile",
       owner: { packageName: `@fixture/${id}`, packageVersion: "1.0.0", packageRoot: "/fixture", registeredBy: "test" },
       artifactKinds: [], fields: [{ name: "shared_field", type: "string", indexed: true, filterable: true }],
-      validators: [{ id: "outcome", async validate() { return number === 9 ? { outcome: "invalid", issues: [{ code: "ninth_warning", summary: "ninth profile warns" }] } : { outcome: "valid" }; } }],
+      validators: [{ id: "outcome", async validate() { return { outcome: "invalid", issues: [{ code: "profile_warning", summary: "profile warns" }] }; } }],
     });
   }
   try {
     await put(root, "docs/profiles.md", "---\nshared_field: yes\n---\n# Profiles\n");
     const result = await executeArtifactSearch(context(root), { filters: { shared_field: "yes" }, freshnessMode: "strict" }, resolveArtifactProfilesV1(scope, registry));
-    const semantics = result.details.results[0].filterSemantics[0];
+    const semantics = result.details.results[0].filterSemantics.items[0];
     assert.equal(semantics.confidence, "profile_warning");
     assert.equal(semantics.profiles.length, 8);
     assert.equal(semantics.profilesTruncated, true);
-    assert.match(result.text, /shared_field=profile_warning \[.*truncated\]/);
+    assert.equal(semantics.totalProfiles, 9);
+    assert.equal(semantics.omittedProfiles, 1);
+    assert.equal(result.details.results[0].profileValidation.total, 9);
+    assert.equal(result.details.results[0].profileValidation.truncated, true);
+    assert.equal(result.details.validationDiagnostics.indexed.warningTotal, 9);
+    assert.equal(result.details.validationDiagnostics.indexed.warningEvidenceTruncated, true);
+    assert.match(result.text, /shared_field=profile_warning \[.*omitted\]/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("compact describe enumerates mature-project fields without samples, while focused inspection stays safe and filterable", async () => {
+  const root = await fixture();
+  try {
+    const fields = Array.from({ length: 145 }, (_, index) => `rare_field_${String(index + 1).padStart(3, "0")}: ${`value-${index + 1}-`.padEnd(70, "x")}`);
+    fields.push("path_hint: C:\\\\Users\\\\alice\\\\private\\\\build", "relative_path: docs/private/build.md", "common: shared");
+    await put(root, "docs/catalog.md", `---\n${fields.join("\n")}\n---\n# Catalog\n`);
+    const compact = await describeArtifactWorkspace(context(root), { outputMode: "compact", freshnessMode: "strict" }, missingProfiles());
+    const detailed = await describeArtifactWorkspace(context(root), { outputMode: "detailed", freshnessMode: "strict" }, missingProfiles());
+    assert.equal(compact.observedFieldCatalog.totalFieldCount, 148);
+    assert.equal(compact.observedFieldCatalog.fields.length, 148, "every observed name/count is discoverable in compact mode");
+    assert(compact.observedFieldCatalog.fields.every((field) => field.sampleValues === undefined), "compact mode must omit sample values");
+    assert(detailed.observedFieldCatalog.fields.every((field) => field.sampleValues === undefined), "detailed mode still omits samples without explicit focused opt-in");
+    assert(JSON.stringify(compact).length < JSON.stringify(detailed).length * 0.75, "compact catalog must be materially smaller");
+    const focused = await describeArtifactWorkspace(context(root), { outputMode: "detailed", fieldNames: ["rare_field_001", "path_hint", "relative_path"], includeSamples: true, freshnessMode: "strict" }, missingProfiles());
+    assert.deepEqual(focused.observedFieldCatalog.fields.map((field) => field.name), ["path_hint", "rare_field_001", "relative_path"]);
+    assert.deepEqual(focused.observedFieldCatalog.fields.find((field) => field.name === "path_hint").sampleValues, []);
+    assert.deepEqual(focused.observedFieldCatalog.fields.find((field) => field.name === "relative_path").sampleValues, []);
+    assert.equal(focused.observedFieldCatalog.fields.find((field) => field.name === "rare_field_001").sampleValues.length, 1);
+    await assert.rejects(describeArtifactWorkspace(context(root), { outputMode: "compact", includeSamples: true }, missingProfiles()), /requires outputMode detailed/);
+    await assert.rejects(describeArtifactWorkspace(context(root), { outputMode: "detailed", includeSamples: true }, missingProfiles()), /requires a non-empty focused fieldNames/);
+    await assert.rejects(describeArtifactWorkspace(context(root), { outputMode: "detailed", fieldNames: [], freshnessMode: "strict" }, missingProfiles()), /1-20 names/);
+    await assert.rejects(describeArtifactWorkspace(context(root), { outputMode: "detailed", fieldNames: ["common", "common"], freshnessMode: "strict" }, missingProfiles()), /duplicates/);
+    await assert.rejects(describeArtifactWorkspace(context(root), { outputMode: "detailed", fieldNames: Array.from({ length: 21 }, (_, index) => `field_${index}`), freshnessMode: "strict" }, missingProfiles()), /1-20 names/);
+    const rare = await executeArtifactSearch(context(root), { filters: { rare_field_145: `value-145-`.padEnd(70, "x") }, freshnessMode: "strict" }, missingProfiles());
+    assert.deepEqual(rare.details.results.map((entry) => entry.path), ["docs/catalog.md"]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("frontmatter text search matches values only and result metadata is relevant and bounded", async () => {
+  const root = await fixture();
+  try {
+    await put(root, "docs/metadata.md", "---\nfailure_mode: runtime_exception\nrare_signal: targetneedle\nmodule: unrelated-module\ncomponent: unrelated-component\nseverity: high\ntags: [unrelated-tag]\n---\n# Metadata\n");
+    await put(root, "todos/001-ready-p1-metadata.md", "---\nstatus: ready\npriority: p1\ntags: [targetneedle, another-tag, third-tag, fourth-tag, fifth-tag]\nmodule: unrelated-module\n---\n# Todo\n\ntargetneedle\n");
+    const nameOnly = await executeArtifactSearch(context(root), { query: "failure mode", searchFields: ["frontmatter"], freshnessMode: "strict" }, missingProfiles());
+    assert.equal(nameOnly.details.resultCount, 0, "field labels alone must not produce general text matches");
+    const exact = await executeArtifactSearch(context(root), { filters: { failure_mode: "runtime_exception" }, freshnessMode: "strict" }, missingProfiles());
+    assert.deepEqual(exact.details.results.map((entry) => entry.path), ["docs/metadata.md"]);
+    const result = await executeArtifactSearch(context(root), { query: "targetneedle", freshnessMode: "strict" }, missingProfiles());
+    const doc = result.details.results.find((entry) => entry.path === "docs/metadata.md");
+    const todo = result.details.results.find((entry) => entry.path === "todos/001-ready-p1-metadata.md");
+    assert.deepEqual(doc.metadataFacets.items.map((facet) => facet.field), ["rare_signal"]);
+    assert(todo.metadataFacets.items.some((facet) => facet.field === "tags" && facet.values.length <= 4));
+    assert(todo.metadataFacets.items.some((facet) => facet.field === "status"));
+    assert(todo.metadataFacets.items.some((facet) => facet.field === "priority"));
+    assert(todo.metadataFacets.items.length <= 6);
+    assert(!result.text.includes("unrelated-module"), "fixed irrelevant metadata labels/values must not be emitted");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("search payloads retain bounded facets, todo state, and mature-workspace size", async () => {
+  const root = await fixture();
+  try {
+    const filterLines = Array.from({ length: 9 }, (_, index) => `facet_${index + 1}: yes`).join("\n");
+    await put(root, "todos/001-ready-p1-facets.md", `---\nstatus: ready\npriority: p1\n${filterLines}\n---\n# Facets\n\nneedle\n`);
+    for (let index = 0; index < 120; index += 1) {
+      const metadata = Array.from({ length: 20 }, (_, field) => `large_field_${field}: ${"x".repeat(80)}`).join("\n");
+      await put(root, `docs/mature-${index}.md`, `---\n${metadata}\n---\n# Mature ${index}\n\nneedle\n`);
+    }
+    const filters = Object.fromEntries(Array.from({ length: 9 }, (_, index) => [`facet_${index + 1}`, "yes"]));
+    const compact = await executeArtifactSearch(context(root), { query: "needle", filters, outputMode: "compact", freshnessMode: "strict" }, missingProfiles());
+    const detailed = await executeArtifactSearch(context(root), { query: "needle", filters, outputMode: "detailed", freshnessMode: "strict" }, missingProfiles());
+    const item = compact.details.results[0];
+    assert.equal(item.metadataFacets.total, 11);
+    assert.equal(item.metadataFacets.truncated, true);
+    assert.equal(item.metadataFacets.omitted, 3);
+    assert(item.metadataFacets.items.some((facet) => facet.field === "status"));
+    assert(item.metadataFacets.items.some((facet) => facet.field === "priority"));
+    assert.match(compact.text, /status=ready/);
+    assert.match(detailed.text, /priority=p1/);
+    assert.equal("frontmatter" in item, false);
+    assert.equal("observedFieldCatalog" in compact.details, false);
+    assert(JSON.stringify(compact.details).length < 100_000, "ordinary mature search payload stays bounded");
+    assert(JSON.stringify(compact.details).length < JSON.stringify(detailed.details).length + 10_000, "mode changes presentation, not an unbounded details dump");
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -385,13 +458,13 @@ test("observed distinct-value cap ignores duplicates at the boundary and caps on
   try {
     const firstHundred = Array.from({ length: 100 }, (_, index) => `value-${index + 1}`);
     await put(root, "docs/values.md", `---\nvalues: [${[...firstHundred, "value-100"].join(", ")}]\n---\n# Values\n`);
-    const initial = await executeArtifactSearch(context(root), { freshnessMode: "strict" }, missingProfiles());
-    const before = initial.details.observedFieldCatalog.fields.find((field) => field.name === "values");
+    const initial = await describeArtifactWorkspace(context(root), { outputMode: "detailed", fieldNames: ["values"], freshnessMode: "strict" }, missingProfiles());
+    const before = initial.observedFieldCatalog.fields.find((field) => field.name === "values");
     assert.equal(before.distinctCount, 100);
     assert.equal(before.distinctCountCapped, false);
     await put(root, "docs/values.md", `---\nvalues: [${[...firstHundred, "value-101"].join(", ")}]\n---\n# Values\n`);
-    const updated = await executeArtifactSearch(context(root), { freshnessMode: "strict" }, missingProfiles());
-    assert.equal(updated.details.observedFieldCatalog.fields.find((field) => field.name === "values").distinctCountCapped, true);
+    const updated = await describeArtifactWorkspace(context(root), { outputMode: "detailed", fieldNames: ["values"], freshnessMode: "strict" }, missingProfiles());
+    assert.equal(updated.observedFieldCatalog.fields.find((field) => field.name === "values").distinctCountCapped, true);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

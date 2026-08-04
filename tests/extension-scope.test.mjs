@@ -94,7 +94,11 @@ test("tool results stay compact until Pi's expanded view is toggled", async () =
     const collapsedDescribe = render(describeTool, describeResult, false);
     assert.match(collapsedDescribe, /field definitions/);
     assert.equal(collapsedDescribe.includes('"observedFieldCatalog"'), false);
-    assert.match(render(describeTool, describeResult, true), /"observedFieldCatalog"/);
+    const expandedDescribe = render(describeTool, describeResult, true);
+    assert.match(expandedDescribe, /Describe mode=compact/);
+    assert.match(expandedDescribe, /Known field definitions \(6\):/);
+    assert.match(expandedDescribe, /status \(string; generic\)/);
+    assert.match(expandedDescribe, /Profile availability \(0\): none/);
 
     const todoTool = pi.tools.get("project_todo_list");
     const todoResult = {
@@ -169,18 +173,24 @@ test("search details and describe content suppress catalog credential samples", 
   try {
     const apiKey = "api-secret-value";
     const neutralCredential = ["AKIA", "IOSFODNN7EXAMPLE"].join("");
-    await writeFile(path.join(root, "docs", "secrets.md"), `---\napi_key: ${apiKey}\naccess_key: access-secret-value\nopaque_value: ${neutralCredential}\n---\n# Secrets\n`);
+    const stripeLive = ["sk", "live", "123456789012345678901234"].join("_");
+    const stripeTest = ["sk", "test", "123456789012345678901234"].join("_");
+    const google = ["AI", "za12345678901234567890123456789012345"].join("");
+    const gitlab = ["gl", "pat-12345678901234567890"].join("");
+    const userinfo = "https://alice:password@example.test/path";
+    await writeFile(path.join(root, "docs", "secrets.md"), `---\napi_key: ${apiKey}\naccess_key: access-secret-value\nopaque_value: ${neutralCredential}\nstripe_live: ${stripeLive}\nstripe_test: ${stripeTest}\ngoogle_value: ${google}\ngitlab_value: ${gitlab}\nurl_value: ${userinfo}\n---\n# Secrets\n`);
     const scope = {};
     const pi = new FakePi();
     registerProjectArtifacts(pi);
     await pi.emit("session_start", context(scope, root));
     const searchResult = await search(pi, scope, root, {});
-    const describeResult = await pi.tools.get("project_artifact_describe").execute("describe", { workspaceRoot: root, freshnessMode: "strict" }, new AbortController().signal, undefined, context(scope, root));
-    for (const secret of [apiKey, "access-secret-value", neutralCredential]) {
+    const describeResult = await pi.tools.get("project_artifact_describe").execute("describe", { workspaceRoot: root, outputMode: "detailed", fieldNames: ["api_key", "access_key", "opaque_value", "stripe_live", "stripe_test", "google_value", "gitlab_value", "url_value"], includeSamples: true, freshnessMode: "strict" }, new AbortController().signal, undefined, context(scope, root));
+    for (const secret of [apiKey, "access-secret-value", neutralCredential, stripeLive, stripeTest, google, gitlab, userinfo]) {
       assert.equal(JSON.stringify(searchResult.details).includes(secret), false);
+      assert.equal(JSON.stringify(describeResult.details).includes(secret), false);
       assert.equal(describeResult.content[0].text.includes(secret), false);
     }
-    assert.deepEqual(describeResult.details.observedFieldCatalog.fields.find((field) => field.name === "api_key").sampleValues, []);
+    for (const field of describeResult.details.observedFieldCatalog.fields) assert.deepEqual(field.sampleValues, []);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -230,7 +240,7 @@ test("separate adapter instances keep profile snapshots isolated by session scop
     assert.deepEqual(resultB.details.provenance.profiles.map((item) => item.profileId), ["fixture.scope-b"]);
     const crossScopeRaw = await search(piA, scopeA, root, { filters: { scope_b: "yes" } });
     assert.equal(crossScopeRaw.details.results.length, 1);
-    assert.equal(crossScopeRaw.details.results[0].filterSemantics[0].confidence, "raw_exact");
+    assert.equal(crossScopeRaw.details.results[0].filterSemantics.items[0].confidence, "raw_exact");
     assert.equal(JSON.stringify(resultA).includes("scope-a-private"), false);
     assert.equal(JSON.stringify(resultB).includes("scope-b-private"), false);
   } finally { await rm(root, { recursive: true, force: true }); }

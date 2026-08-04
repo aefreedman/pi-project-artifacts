@@ -5,6 +5,7 @@ import { Type } from "typebox";
 import * as path from "node:path";
 import { createArtifactSearchServiceRegistryV1, createTodoLifecycleServiceRegistryV1, resolveArtifactSearchServiceV1, resolveTodoLifecycleServiceV1, parseCanonicalTodoPathV1, } from "../contracts/v1/index.js";
 import { createArtifactSearchServiceV1, createTodoLifecycleServiceV1 } from "../core/services.js";
+import { formatArtifactWorkspaceDescription } from "../core/artifact-search.js";
 import { bindArtifactExecutionScopeV1 } from "../core/execution-context.js";
 import { trackArtifactToolResult } from "../core/artifact-index.js";
 import { ProjectArtifactError } from "../core/errors.js";
@@ -44,6 +45,9 @@ const DESCRIBE_PARAMETERS = Type.Object({
     indexPath: Type.Optional(Type.String({ description: "Disposable canonical index path within the workspace." })),
     freshnessMode: Type.Optional(StringEnum(["auto", "strict", "memory"])),
     freshnessTtlMs: Type.Optional(Type.Integer({ minimum: 0, default: 30000 })),
+    outputMode: Type.Optional(StringEnum(["compact", "detailed"], { description: "Compact lists all names/counts and always omits examples; detailed adds type/cardinality detail." })),
+    fieldNames: Type.Optional(Type.Array(Type.String({ minLength: 1, pattern: "^[A-Za-z0-9_-]+$", description: "Exact observed top-level frontmatter field name for a focused detailed sample inspection." }), { minItems: 1, maxItems: 20, uniqueItems: true })),
+    includeSamples: Type.Optional(Type.Boolean({ default: false, description: "Requires outputMode=detailed and a non-empty exact fieldNames list; includes up to three safe scalar examples per selected field." })),
     rebuild: Type.Optional(Type.Boolean({ default: false })),
 });
 const ROOT_PARAMETERS = {
@@ -106,9 +110,9 @@ export default function registerProjectArtifacts(pi) {
     pi.registerTool({
         name: "project_artifact_describe",
         label: "Describe Project Artifact Fields",
-        description: "List built-in and workspace-applicable artifact-profile YAML fields plus a safe, bounded catalog of metadata observed by the canonical docs/todos index.",
+        description: "Compactly list built-in/workspace profile fields and every observed metadata name/count. Examples are opt-in, focused, bounded, and redact credentials or absolute paths.",
         promptSnippet: "Discover project-artifact schemas and observed raw metadata before filtering.",
-        promptGuidelines: ["Use project_artifact_describe to discover registered schemas, workspace profile availability, and observed exact raw metadata fields."],
+        promptGuidelines: ["Use compact project_artifact_describe to discover every observed field name/count; use exact fieldNames plus includeSamples only for focused safe examples."],
         parameters: DESCRIBE_PARAMETERS,
         renderResult: renderArtifactDescribeResult,
         async execute(toolCallId, params, signal, _onUpdate, ctx) {
@@ -116,7 +120,7 @@ export default function registerProjectArtifacts(pi) {
             if (service.describe === undefined)
                 throw new ProjectArtifactError("describe_unavailable", "The canonical ArtifactSearchServiceV1 does not implement observed-metadata describe. Start a fresh session with @aefree/pi-project-artifacts.");
             const result = await service.describe(executionContext(ctx, signal, toolCallId), params);
-            return { content: [{ type: "text", text: JSON.stringify(result.details, null, 2) }], details: result.details };
+            return { content: [{ type: "text", text: formatArtifactWorkspaceDescription(result.details) }], details: result.details };
         },
     });
     registerTodoReadTool(pi, "project_todo_validate", "Validate File Todos", "Validate every Markdown todo and report canonical filename/frontmatter conflicts without mutation.", "list", ROOT_PARAMETERS);

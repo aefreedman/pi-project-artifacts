@@ -55,9 +55,12 @@ export function searchArtifactIndex(index, request, profiles) {
         const { score, reasons } = scoreEntry(entry, request.query, scoringTerms, String(request.rankProfile ?? "balanced"), searchFields);
         if (score <= 0)
             continue;
-        const titlePart = entry.title === undefined ? {} : { title: entry.title };
+        const safeTitle = entry.title === undefined ? undefined : safeFrontmatterForDisplay({ title: entry.title }).title;
+        const titlePart = typeof safeTitle === "string" ? { title: safeTitle.slice(0, 240) } : {};
         const filterSemantics = Object.keys(filters).length === 0 ? undefined : semanticsForFilters(entry, Object.keys(filters), profiles);
-        scored.push(Object.freeze({ path: entry.path, kind: entry.kind, ...titlePart, score, frontmatter: safeFrontmatterForDisplay(entry.frontmatter), reasons: Object.freeze(reasons), profileValidation: entry.profileData, ...(filterSemantics === undefined ? {} : { filterSemantics }) }));
+        const frontmatter = safeFrontmatterForDisplay(entry.frontmatter);
+        const metadataFacets = metadataFacetsFor(entry, frontmatter, Object.keys(filters), scoringTerms);
+        scored.push(Object.freeze({ path: entry.path, kind: entry.kind, ...titlePart, score, metadataFacets, reasons: Object.freeze(reasons.slice(0, 6).map((reason) => reason.slice(0, 240))), profileValidation: profileValidationSummary(entry.profileData), ...(filterSemantics === undefined ? {} : { filterSemantics }) }));
     }
     scored.sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
     const totalMatches = scored.length;
@@ -92,24 +95,24 @@ export function formatArtifactResults(result, request, metadata) {
         if (detailed) {
             lines.push(`${index + 1}. ${item.path}${item.title ? ` — ${item.title}` : ""}`);
             lines.push(`   kind: ${item.kind}; score: ${item.score.toFixed(1)}`);
-            const summary = frontmatterSummary(item.frontmatter, false);
+            const summary = metadataFacetSummary(item.metadataFacets, false);
             if (summary)
-                lines.push(`   ${summary}`);
+                lines.push(`   metadata: ${summary}`);
             if (item.snippet)
                 lines.push(`   snippet: ${item.snippet}`);
             if (request.explain && item.reasons.length > 0)
                 lines.push(`   reasons: ${item.reasons.slice(0, 6).join("; ")}`);
-            if (item.filterSemantics?.length)
+            if (item.filterSemantics?.items.length)
                 lines.push(`   filter semantics: ${formatFilterSemantics(item.filterSemantics)}`);
-            if (item.profileValidation.length > 0)
-                lines.push(`   profile validation: ${item.profileValidation.map((profile) => `${profile.profileId}=${profile.validation.outcome}`).join("; ")}`);
+            if (item.profileValidation.items.length > 0)
+                lines.push(`   profile validation: ${formatProfileValidation(item.profileValidation)}`);
             if (item.related?.length)
                 lines.push(`   related: ${item.related.map((entry) => `${entry.path} (${entry.relation})`).join("; ")}`);
         }
         else {
-            const summary = frontmatterSummary(item.frontmatter, true);
+            const summary = metadataFacetSummary(item.metadataFacets, true);
             lines.push(`${index + 1}. [${item.kind} ${item.score.toFixed(0)}] ${item.path}${item.title ? ` — ${item.title}` : ""}${summary ? ` | ${summary}` : ""}`);
-            if (item.filterSemantics?.length)
+            if (item.filterSemantics?.items.length)
                 lines.push(`   filter semantics: ${formatFilterSemantics(item.filterSemantics)}`);
             if (request.explain && item.reasons.length > 0)
                 lines.push(`   why: ${item.reasons.slice(0, 4).join("; ")}`);
@@ -139,17 +142,17 @@ export function groupByKind(results) {
     return Object.freeze(Object.fromEntries(Object.entries(groups).map(([key, value]) => [key, Object.freeze(value)])));
 }
 export function suggestedRg(request) {
-    const terms = dedupe([...tokenizeQuery(request.query), ...normalizeList(request.requiredTerms), ...normalizeList(request.optionalTerms)]).slice(0, 12);
+    const terms = dedupe([...tokenizeQuery(request.query), ...normalizeList(request.requiredTerms), ...normalizeList(request.optionalTerms)]).map((term) => term.slice(0, 120)).slice(0, 12);
     if (terms.length === 0)
         return undefined;
     const expression = terms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")).join("|").replaceAll("'", "'\\''");
     return `rg -i --glob '*.md' '${expression}' "\${DOCS_ROOT}" "\${TODOS_ROOT}"`;
 }
-export function controlsFor(request, fieldDefinitions) {
+export function controlsFor(request) {
     return Object.freeze({
-        ranking: Object.freeze({ rankProfile: request.rankProfile ?? "balanced", matchMode: request.matchMode ?? "all", minTermMatches: request.minTermMatches, requiredTerms: normalizeList(request.requiredTerms), optionalTerms: normalizeList(request.optionalTerms), includeBody: request.includeBody !== false, searchFields: fieldsForSearch(request), fieldWeights: FIELD_WEIGHTS, severityBoosts: SEVERITY_BOOSTS, todoStatusBoosts: TODO_STATUS_BOOSTS, todoPriorityBoosts: TODO_PRIORITY_BOOSTS }),
+        ranking: Object.freeze({ rankProfile: request.rankProfile ?? "balanced", matchMode: request.matchMode ?? "all", minTermMatches: request.minTermMatches, requiredTerms: normalizeList(request.requiredTerms).slice(0, 12).map((term) => term.slice(0, 120)), optionalTerms: normalizeList(request.optionalTerms).slice(0, 12).map((term) => term.slice(0, 120)), includeBody: request.includeBody !== false, searchFields: fieldsForSearch(request), fieldWeights: FIELD_WEIGHTS, severityBoosts: SEVERITY_BOOSTS, todoStatusBoosts: TODO_STATUS_BOOSTS, todoPriorityBoosts: TODO_PRIORITY_BOOSTS }),
         bodySearchCoverage: Object.freeze({ mode: "preview_only", indexedCharactersPerDocument: BODY_PREVIEW_SEARCH_CHARS, exhaustiveSearch: "Use suggestedRg, then read each matching Markdown file; the index never searches body text beyond its preview." }),
-        filters: Object.freeze({ exactNormalizedMatching: true, fields: fieldDefinitions.filter((field) => field.filterable) }),
+        filters: Object.freeze({ exactNormalizedMatching: true, schemaOpen: true }),
         index: Object.freeze(["workspaceRoot", "docsRoot", "todosRoot", "indexPath", "rebuild", "freshnessMode", "freshnessTtlMs", "outputMode"]),
     });
 }
@@ -203,7 +206,7 @@ function passesFilters(entry, filters, includeCompleted) {
     return true;
 }
 function semanticsForFilters(entry, fields, profiles) {
-    return Object.freeze([...fields].sort().map((field) => {
+    const all = [...fields].sort().map((field) => {
         const defining = profiles.filter((profile) => profile.fields.some((definition) => definition.name === field));
         const applicable = defining.flatMap((profile) => entry.profileData
             .filter((data) => data.profileId === profile.id && data.packageName === profile.owner.packageName && data.packageVersion === profile.owner.packageVersion)
@@ -213,15 +216,21 @@ function semanticsForFilters(entry, fields, profiles) {
         // the bounded evidence rows rendered to callers.
         const confidence = ordered.length === 0 ? "raw_exact" : ordered.every((profile) => profile.outcome === "valid") ? "profile_validated" : "profile_warning";
         const bounded = ordered.slice(0, 8);
-        return Object.freeze({ field, confidence, profiles: Object.freeze(bounded), profilesTruncated: ordered.length > bounded.length });
-    }));
+        return Object.freeze({ field, confidence, profiles: Object.freeze(bounded), totalProfiles: ordered.length, omittedProfiles: Math.max(0, ordered.length - bounded.length), profilesTruncated: ordered.length > bounded.length });
+    });
+    const items = all.slice(0, 8);
+    return Object.freeze({ items: Object.freeze(items), total: all.length, omitted: Math.max(0, all.length - items.length), truncated: all.length > items.length });
 }
-function formatFilterSemantics(fields) {
-    return fields.map((field) => {
+function formatFilterSemantics(summary) {
+    const fields = summary.items.map((field) => {
         const profiles = field.profiles.map((profile) => `${profile.profileId}=${profile.outcome}`).join(", ");
         const evidence = profiles || "no applicable defining profile";
-        return `${field.field}=${field.confidence} [${evidence}${field.profilesTruncated ? ", truncated" : ""}]`;
+        return `${field.field}=${field.confidence} [${evidence}${field.profilesTruncated ? `, +${field.omittedProfiles} omitted` : ""}]`;
     }).join("; ");
+    return `${fields}${summary.truncated ? `; +${summary.omitted} filter fields omitted` : ""}`;
+}
+function formatProfileValidation(summary) {
+    return `${summary.items.map((profile) => `${profile.profileId}=${profile.outcome}`).join("; ")}${summary.truncated ? `; +${summary.omitted} omitted` : ""}`;
 }
 function statusFrom(entry) {
     const status = stringValues(entry.frontmatter.status)[0]?.toLowerCase();
@@ -247,7 +256,9 @@ function fieldText(entry, field) {
         case "path": return aliasText([entry.path]);
         case "title": return aliasText([entry.title ?? ""]);
         case "tags": return aliasText(stringValues(entry.frontmatter.tags));
-        case "frontmatter": return aliasText(Object.entries(entry.frontmatter).flatMap(([key, value]) => [key, ...stringValues(value)]));
+        // Names are discoverable through describe and exact filters; general text
+        // search intentionally indexes only metadata values to avoid false positives.
+        case "frontmatter": return aliasText(Object.values(entry.frontmatter).flatMap(stringValues));
         case "headings": return aliasText([...entry.headings]);
         case "body": return entry.bodyPreview;
     }
@@ -340,7 +351,42 @@ function attachRelated(results, index, rawLimit) {
         return Object.freeze({ ...item, ...(related.length === 0 ? {} : { related: Object.freeze(related) }) });
     });
 }
-function frontmatterSummary(frontmatter, compact) {
-    const fields = compact ? [["status", "status"], ["priority", "prio"], ["severity", "sev"], ["module", "mod"], ["component", "comp"], ["tags", "tags"]] : [["status", "status"], ["priority", "priority"], ["module", "module"], ["component", "component"], ["severity", "severity"], ["tags", "tags"]];
-    return fields.flatMap(([field, label]) => { const values = stringValues(frontmatter[field]); return values.length ? [`${label}=${values.slice(0, 5).join(", ")}${values.length > 5 ? `, +${values.length - 5}` : ""}`] : []; }).join("; ");
+function metadataFacetsFor(entry, frontmatter, filterFields, terms) {
+    const facets = new Map();
+    const add = (field, values) => { if (values.filter(Boolean).length > 0 && !facets.has(field))
+        facets.set(field, values.filter(Boolean)); };
+    // Exact filters are the strongest caller signal. Sensitive values have
+    // already been removed from the safe display map.
+    for (const field of [...filterFields].sort())
+        add(field, stringValues(frontmatter[field]));
+    // Do not let an identifier alone promote its label: only matching values qualify.
+    for (const [field, value] of Object.entries(frontmatter).sort(([left], [right]) => left.localeCompare(right))) {
+        const matching = stringValues(value).filter((candidate) => terms.some((term) => normalizeSearchText(candidate).includes(term)));
+        if (matching.length > 0)
+            add(field, matching);
+    }
+    if (entry.kind === "todo") {
+        add("status", [statusFrom(entry) ?? ""]);
+        add("priority", [priorityFrom(entry) ?? ""]);
+    }
+    const todoOrder = (field) => entry.kind === "todo" && field === "status" ? 0 : entry.kind === "todo" && field === "priority" ? 1 : 2;
+    const all = [...facets.entries()].sort(([left], [right]) => todoOrder(left) - todoOrder(right) || left.localeCompare(right));
+    const items = all.slice(0, 8).map(([field, values]) => {
+        const shown = values.slice(0, field === "tags" ? 4 : 3);
+        return Object.freeze({ field, values: Object.freeze(shown), totalValues: values.length, omittedValues: Math.max(0, values.length - shown.length), truncated: values.length > shown.length });
+    });
+    return Object.freeze({ items: Object.freeze(items), total: all.length, omitted: Math.max(0, all.length - items.length), truncated: all.length > items.length });
+}
+function profileValidationSummary(data) {
+    const all = data.map((profile) => Object.freeze({ profileId: profile.profileId, outcome: profile.validation.outcome }))
+        .sort((left, right) => (left.outcome === "valid" ? 1 : 0) - (right.outcome === "valid" ? 1 : 0) || left.profileId.localeCompare(right.profileId));
+    const items = all.slice(0, 3);
+    return Object.freeze({ items: Object.freeze(items), total: all.length, omitted: Math.max(0, all.length - items.length), truncated: all.length > items.length });
+}
+function metadataFacetSummary(facets, compact) {
+    const text = facets.items.map((facet) => {
+        const label = compact && facet.field === "priority" ? "prio" : facet.field;
+        return `${label}=${facet.values.join(", ")}${facet.truncated ? `, +${facet.omittedValues} omitted` : ""}`;
+    }).join("; ");
+    return `${text}${facets.truncated ? `${text ? "; " : ""}+${facets.omitted} facets omitted` : ""}`;
 }

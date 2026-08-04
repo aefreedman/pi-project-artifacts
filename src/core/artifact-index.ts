@@ -77,15 +77,29 @@ export type IndexRequest = Readonly<{
 export type ObservedFieldCatalogEntry = Readonly<{
   name: string;
   documentCount: number;
-  inferredPrimitiveTypes: readonly ("string" | "number" | "boolean" | "null")[];
-  distinctCount: number;
-  distinctCountCapped: boolean;
-  sampleValues: readonly string[];
+  /** Detailed describe only: primitive/value cardinality evidence. */
+  inferredPrimitiveTypes?: readonly ("string" | "number" | "boolean" | "null")[];
+  distinctCount?: number;
+  distinctCountCapped?: boolean;
+  /** Detailed, focused sampling only. */
+  sampleValues?: readonly string[];
 }>;
 export type ObservedFieldCatalog = Readonly<{
   fields: readonly ObservedFieldCatalogEntry[];
   totalFieldCount: number;
+  returnedFieldCount: number;
+  omittedFieldCount: number;
   truncated: boolean;
+}>;
+export type ObservedFieldCatalogOptions = Readonly<{
+  /** Exact observed names to inspect after a discovery pass. */
+  fieldNames?: readonly string[];
+  /** Values are deliberately opt-in; names/counts are enough for discovery. */
+  includeSamples?: boolean;
+  /** Compact mode omits cardinality/type detail as well as examples. */
+  detailed?: boolean;
+  /** Internal bounded consumers only; describe intentionally enumerates names. */
+  maxFields?: number;
 }>;
 
 const memoryCache = new Map<string, { index: ArtifactIndexV1; mtimeMs: number; size: number; validatedAtMs: number }>();
@@ -292,8 +306,8 @@ async function parseEntry(file: CurrentFile, relative: string, context: Artifact
   });
 }
 
-/** A bounded, safe summary of the top-level metadata actually indexed. */
-export function observedFieldCatalog(index: ArtifactIndexV1): ObservedFieldCatalog {
+/** A safe summary of the top-level metadata actually indexed. */
+export function observedFieldCatalog(index: ArtifactIndexV1, options: ObservedFieldCatalogOptions = {}): ObservedFieldCatalog {
   const valuesByField = new Map<string, { documentCount: number; primitiveTypes: Set<"string" | "number" | "boolean" | "null">; values: Set<string>; valuesCapped: boolean }>();
   for (const entry of Object.values(index.files)) for (const [name, value] of Object.entries(entry.frontmatter)) {
     const current = valuesByField.get(name) ?? { documentCount: 0, primitiveTypes: new Set(), values: new Set(), valuesCapped: false };
@@ -309,15 +323,26 @@ export function observedFieldCatalog(index: ArtifactIndexV1): ObservedFieldCatal
     }
   }
   const all = [...valuesByField.entries()].sort(([left], [right]) => left.localeCompare(right));
-  const fields = all.slice(0, 100).map(([name, data]) => Object.freeze({
+  const requested = options.fieldNames === undefined ? undefined : new Set(options.fieldNames);
+  const selected = requested === undefined ? all : all.filter(([name]) => requested.has(name));
+  const maxFields = options.maxFields === undefined ? selected.length : Math.max(0, Math.floor(options.maxFields));
+  const fields = selected.slice(0, maxFields).map(([name, data]) => Object.freeze({
     name,
     documentCount: data.documentCount,
-    inferredPrimitiveTypes: Object.freeze([...data.primitiveTypes].sort()),
-    distinctCount: data.values.size,
-    distinctCountCapped: data.valuesCapped,
-    sampleValues: Object.freeze(isSensitiveFieldName(name) ? [] : [...data.values].filter(isSafeCatalogSample).sort().slice(0, 3)),
+    ...(options.detailed === true ? {
+      inferredPrimitiveTypes: Object.freeze([...data.primitiveTypes].sort()),
+      distinctCount: data.values.size,
+      distinctCountCapped: data.valuesCapped,
+    } : {}),
+    ...(options.includeSamples === true ? { sampleValues: Object.freeze(isSensitiveFieldName(name) ? [] : [...data.values].filter(isSafeCatalogSample).sort().slice(0, 3)) } : {}),
   }));
-  return Object.freeze({ fields: Object.freeze(fields), totalFieldCount: all.length, truncated: all.length > fields.length });
+  return Object.freeze({
+    fields: Object.freeze(fields),
+    totalFieldCount: all.length,
+    returnedFieldCount: fields.length,
+    omittedFieldCount: Math.max(0, all.length - fields.length),
+    truncated: selected.length > fields.length || selected.length !== all.length,
+  });
 }
 
 export async function inspectIndexOwnership(indexPath: string): Promise<
@@ -484,7 +509,14 @@ function isSensitiveFieldName(name: string): boolean {
   return /(?:^|_)(?:api_?key|access_?key|private_?key|key|token|secret|password|credential|auth(?:entication|orization)?|cookie)(?:_|$)/u.test(normalized);
 }
 function isSafeCatalogSample(value: string): boolean {
-  return value.length > 0 && value.length <= 80 && !/[\r\n]/u.test(value) && !looksLikeCredential(value);
+  return value.length > 0 && value.length <= 80 && !/[\r\n]/u.test(value) && !looksLikeCredential(value) && !looksLikeAbsolutePath(value);
+}
+
+/** Catalog examples must not leak a machine layout through absolute paths. */
+function looksLikeAbsolutePath(value: string): boolean {
+  const sample = value.trim();
+  return /^(?:\/|~[\\/]|[A-Za-z]:[\\/]|[\\/]{2}[^\\/]+)/u.test(sample)
+    || /^(?:\.{1,2}[\\/]|(?:[^\\/\s]+[\\/])+[^\\/\s]+)$/u.test(sample);
 }
 
 /** Conservative recognition for credentials stored under otherwise neutral names. */
@@ -496,6 +528,10 @@ function looksLikeCredential(value: string): boolean {
   return /^(?:AKIA|ASIA)[A-Z0-9]{16}$/u.test(sample) // AWS access keys
     || /^(?:gh[pousr]|github_pat)_[A-Za-z0-9_]{20,}$/u.test(sample) // GitHub tokens
     || /^sk-[A-Za-z0-9_-]{16,}$/u.test(sample) // API keys such as OpenAI
+    || /^sk_(?:live|test)_[A-Za-z0-9]{16,}$/u.test(sample) // Stripe live/test keys
+    || /^AIza[A-Za-z0-9_-]{20,}$/u.test(sample) // Google API keys
+    || /^glpat-[A-Za-z0-9_-]{16,}$/u.test(sample) // GitLab personal/project tokens
+    || /^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s/@:]+:[^\s/@]+@/u.test(sample) // URL userinfo
     || /^xox[baprs]-[A-Za-z0-9-]{10,}$/u.test(sample) // Slack tokens
     || /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u.test(sample) // JWTs
     || /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----/u.test(sample);

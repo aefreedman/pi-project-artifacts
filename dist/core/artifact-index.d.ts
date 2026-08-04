@@ -73,23 +73,37 @@ export type IndexRequest = Readonly<{
 export type ObservedFieldCatalogEntry = Readonly<{
     name: string;
     documentCount: number;
-    inferredPrimitiveTypes: readonly ("string" | "number" | "boolean" | "null")[];
-    distinctCount: number;
-    distinctCountCapped: boolean;
-    sampleValues: readonly string[];
+    /** Detailed describe only: primitive/value cardinality evidence. */
+    inferredPrimitiveTypes?: readonly ("string" | "number" | "boolean" | "null")[];
+    distinctCount?: number;
+    distinctCountCapped?: boolean;
+    /** Detailed, focused sampling only. */
+    sampleValues?: readonly string[];
 }>;
 export type ObservedFieldCatalog = Readonly<{
     fields: readonly ObservedFieldCatalogEntry[];
     totalFieldCount: number;
+    returnedFieldCount: number;
+    omittedFieldCount: number;
     truncated: boolean;
+}>;
+export type ObservedFieldCatalogOptions = Readonly<{
+    /** Exact observed names to inspect after a discovery pass. */
+    fieldNames?: readonly string[];
+    /** Values are deliberately opt-in; names/counts are enough for discovery. */
+    includeSamples?: boolean;
+    /** Compact mode omits cardinality/type detail as well as examples. */
+    detailed?: boolean;
+    /** Internal bounded consumers only; describe intentionally enumerates names. */
+    maxFields?: number;
 }>;
 export declare function defaultIndexFilename(roots: ArtifactRoots): string;
 export declare function resolveIndexPath(request: IndexRequest, roots: ArtifactRoots): string;
 /** Resolve a requested workspace within the physical session boundary without indexing it. */
 export declare function resolveContainedWorkspaceRoot(context: ArtifactExecutionContextV1, request?: Pick<IndexRequest, "workspaceRoot">): Promise<string>;
 export declare function buildOrRefreshIndex(request: IndexRequest, context: ArtifactExecutionContextV1, profiles?: readonly ArtifactProfileV1[], failureInjector?: FailureInjector): Promise<RefreshResult>;
-/** A bounded, safe summary of the top-level metadata actually indexed. */
-export declare function observedFieldCatalog(index: ArtifactIndexV1): ObservedFieldCatalog;
+/** A safe summary of the top-level metadata actually indexed. */
+export declare function observedFieldCatalog(index: ArtifactIndexV1, options?: ObservedFieldCatalogOptions): ObservedFieldCatalog;
 export declare function inspectIndexOwnership(indexPath: string): Promise<{
     kind: "absent";
 } | {
