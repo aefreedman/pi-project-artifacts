@@ -1,6 +1,6 @@
 {
   "name": "@aefree/pi-project-artifacts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Canonical project Markdown artifact search and atomic file-todo lifecycle tools with versioned provider contracts.",
   "type": "module",
   "sideEffects": false,
