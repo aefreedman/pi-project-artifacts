@@ -29,6 +29,7 @@ jobs:
       - name: Check out release tag
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up Node.js
@@ -64,18 +65,18 @@ jobs:
           error_file="$(mktemp)"
           if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version gitHead --json >"$metadata_file" 2>"$error_file"; then
             if ! node - "$metadata_file" "$PACKAGE_VERSION" "$SOURCE_COMMIT" <<'NODE'
-const [metadataPath, expectedVersion, expectedHead] = process.argv.slice(2);
-const metadata = JSON.parse(require("fs").readFileSync(metadataPath, "utf8"));
-if (
-  !metadata ||
-  Array.isArray(metadata) ||
-  metadata.version !== expectedVersion ||
-  typeof metadata.gitHead !== "string" ||
-  metadata.gitHead !== expectedHead
-) {
-  process.exit(1);
-}
-NODE
+          const [metadataPath, expectedVersion, expectedHead] = process.argv.slice(2);
+          const metadata = JSON.parse(require("fs").readFileSync(metadataPath, "utf8"));
+          if (
+            !metadata ||
+            Array.isArray(metadata) ||
+            metadata.version !== expectedVersion ||
+            typeof metadata.gitHead !== "string" ||
+            metadata.gitHead !== expectedHead
+          ) {
+            process.exit(1);
+          }
+          NODE
             then
               echo "existing npm metadata is malformed or does not match $PACKAGE_NAME@$PACKAGE_VERSION at $SOURCE_COMMIT" >&2
               rm -f "$metadata_file" "$error_file"
