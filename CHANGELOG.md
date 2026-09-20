@@ -4,6 +4,10 @@
 
 ### Changed
 
+- Updated Pi development dependencies and validation baseline to 0.86.1.
+
+### Changed
+
 - Added GitHub Actions trusted publishing for tested, provenance-backed npm releases with tag/version identity checks and safe retry reconciliation.
 
 ## [0.1.0] - 2026-08-03
