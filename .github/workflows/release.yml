@@ -101,6 +101,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Check package inventory
+        run: npm pack --dry-run --json
+
       - name: Publish to npm
         if: steps.identity.outputs.already_published != 'true'
         run: npm publish --access public --provenance

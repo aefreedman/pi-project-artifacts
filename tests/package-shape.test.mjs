@@ -38,6 +38,15 @@ test("package exposes one canonical Pi extension, three package-owned skills, an
   assert.deepEqual(Object.keys(manifest.exports).sort(), [".", "./contracts", "./contracts/v1", "./contracts/v1/conformance", "./core", "./pi"]);
 });
 
+test("release packaging builds first and keeps version identity coherent", () => {
+  assert.equal(manifest.scripts.prepack, "npm run build");
+  assert.equal(lockfile.version, manifest.version);
+  assert.equal(lockfile.packages[""].version, manifest.version);
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  assert(readme.includes(`pi install npm:${manifest.name}@${manifest.version}`));
+  assert(readme.includes(`pi install -l npm:${manifest.name}@${manifest.version}`));
+});
+
 test("consumer docs identify disposable cache data without hiding authoritative Markdown", () => {
   const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
   assert.match(readme, /\.pi-project-artifacts\//);

@@ -2,9 +2,14 @@
 
 ## Unreleased
 
-- Pin TypeScript 7.0.2; align direct Node types with the runtime floor; require Node >=22.19.0 for the Pi runtime.
+## 0.1.3 - 2026-09-29
 
+### Changed
+
+- Pin TypeScript 7.0.2; align direct Node types with the runtime floor; require Node >=22.19.0 for the Pi runtime.
 - Align development and deterministic validation with Pi 0.99.1.
+- Update installation guidance to 0.1.3 and document the supported runtime baseline.
+- Build automatically before packing and check the release package inventory before publication.
 
 ## 0.1.2 - 2026-09-21
 
