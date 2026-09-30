@@ -1,9 +1,9 @@
 import { artifactCacheState, buildOrRefreshIndex, observedFieldCatalog } from "./artifact-index.js";
 import { BODY_PREVIEW_SEARCH_CHARS, controlsFor, describeArtifactFields, formatArtifactResults, searchArtifactIndex, suggestedRg } from "./artifact-query.js";
+import { ARTIFACTS_PACKAGE_NAME, ARTIFACTS_PACKAGE_VERSION } from "./package-identity.js";
 const MAX_DESCRIBE_FIELD_NAMES = 20;
 export const ARTIFACT_SEARCH_SERVICE_ID = "project-artifact-search.v1";
-export const ARTIFACTS_PACKAGE_NAME = "@aefree/pi-project-artifacts";
-export const ARTIFACTS_PACKAGE_VERSION = "0.1.0";
+export { ARTIFACTS_PACKAGE_NAME, ARTIFACTS_PACKAGE_VERSION } from "./package-identity.js";
 /** Canonical search composition. It never imports a provider package. */
 export async function executeArtifactSearch(context, request, profileResolution) {
     const profiles = profileResolution.outcome === "available" ? profileResolution.records : [];

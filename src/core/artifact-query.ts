@@ -3,6 +3,7 @@ import type { ArtifactFieldDefinitionV1, ArtifactProfileV1, ArtifactSearchReques
 import { safeFrontmatterForDisplay, type ArtifactCacheState, type ArtifactIndexEntryV1, type ArtifactIndexV1, type ArtifactKind, type FreshnessMode, type ProfileEntryData, type SearchField } from "./artifact-index.js";
 import { ProjectArtifactError } from "./errors.js";
 import { stringValues } from "./markdown.js";
+import { ARTIFACTS_PACKAGE_NAME, ARTIFACTS_PACKAGE_VERSION } from "./package-identity.js";
 
 const DEFAULT_LIMIT = 20;
 const DEFAULT_SNIPPET_CHARS = 220;
@@ -67,7 +68,7 @@ export type ArtifactQueryResult = Readonly<{ results: readonly ArtifactSearchIte
 export function describeArtifactFields(profiles: readonly ArtifactProfileV1[]): readonly ArtifactFieldDescription[] {
   const generic = GENERIC_FIELDS.map((field) => Object.freeze({
     ...field, required: field.required === true, enumValues: Object.freeze([...(field.enumValues ?? [])]),
-    owner: Object.freeze({ kind: "generic" as const, packageName: "@aefree/pi-project-artifacts", packageVersion: "0.1.0" }),
+    owner: Object.freeze({ kind: "generic" as const, packageName: ARTIFACTS_PACKAGE_NAME, packageVersion: ARTIFACTS_PACKAGE_VERSION }),
   }));
   const profileFields = profiles.flatMap((profile) => profile.fields.map((field) => Object.freeze({
     ...field, required: field.required === true, enumValues: Object.freeze([...(field.enumValues ?? [])]),

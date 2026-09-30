@@ -9,6 +9,7 @@ import { formatArtifactWorkspaceDescription } from "../core/artifact-search.js";
 import { bindArtifactExecutionScopeV1 } from "../core/execution-context.js";
 import { trackArtifactToolResult } from "../core/artifact-index.js";
 import { ProjectArtifactError } from "../core/errors.js";
+import { ARTIFACTS_PACKAGE_NAME, ARTIFACTS_PACKAGE_VERSION } from "../core/package-identity.js";
 const STRING_OR_ARRAY = Type.Union([Type.String(), Type.Array(Type.String())]);
 const FILTER_VALUES = Type.Union([Type.String(), Type.Array(Type.String())]);
 const SEARCH_PARAMETERS = Type.Object({
@@ -300,4 +301,4 @@ function normalizedRootParams(ctx, params) {
     return { workspaceRoot, ...(params.todosRoot?.trim() ? { todosRoot: resolveTarget(workspaceRoot, params.todosRoot) } : {}) };
 }
 function resolveTarget(base, value) { const cleaned = value.trim().replace(/^@(?=[^@])/u, ""); return path.isAbsolute(cleaned) ? path.resolve(cleaned) : path.resolve(base, cleaned); }
-function todoToolResult(result) { const text = JSON.stringify(result, null, 2); return { content: [{ type: "text", text }], details: { result, provenance: { canonical: { serviceId: "project-file-todos.v1", packageName: "@aefree/pi-project-artifacts", packageVersion: "0.1.0", contractVersion: 1 } } } }; }
+function todoToolResult(result) { const text = JSON.stringify(result, null, 2); return { content: [{ type: "text", text }], details: { result, provenance: { canonical: { serviceId: "project-file-todos.v1", packageName: ARTIFACTS_PACKAGE_NAME, packageVersion: ARTIFACTS_PACKAGE_VERSION, contractVersion: 1 } } } }; }

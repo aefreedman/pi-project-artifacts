@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import manifest from "../package.json" with { type: "json" };
 import registerProjectArtifacts from "../dist/pi/index.js";
 import {
   ARTIFACT_PROFILE_REGISTRY_KEY_V1,
@@ -108,6 +109,27 @@ test("tool results stay compact until Pi's expanded view is toggled", async () =
     assert.match(render(todoTool, todoResult, false), /1 todo listed/);
     assert.equal(render(todoTool, todoResult, false).includes("001-ready-p2-task.md"), false);
     assert.match(render(todoTool, todoResult, true), /001-ready-p2-task\.md/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("service, search, generic fields, and todo provenance use the installed package identity", async () => {
+  const root = await workspace();
+  try {
+    const scope = {};
+    const pi = new FakePi();
+    registerProjectArtifacts(pi);
+    await pi.emit("session_start", context(scope, root));
+    const expected = { packageName: manifest.name, packageVersion: manifest.version };
+    const service = resolveArtifactSearchServiceV1(scope).records[0];
+    assert.deepEqual({ packageName: service.owner.packageName, packageVersion: service.owner.packageVersion }, expected);
+    const result = await search(pi, scope, root, {});
+    assert.deepEqual({ packageName: result.details.provenance.canonical.packageName, packageVersion: result.details.provenance.canonical.packageVersion }, expected);
+    const describe = await pi.tools.get("project_artifact_describe").execute("describe", { workspaceRoot: root }, new AbortController().signal, undefined, context(scope, root));
+    const generic = describe.details.fields.find((field) => field.name === "status" && field.owner.kind === "generic");
+    assert.deepEqual({ packageName: generic.owner.packageName, packageVersion: generic.owner.packageVersion }, expected);
+    await mkdir(path.join(root, "todos"));
+    const todos = await pi.tools.get("project_todo_list").execute("todo-list", { workspaceRoot: root }, new AbortController().signal, undefined, context(scope, root));
+    assert.deepEqual({ packageName: todos.details.provenance.canonical.packageName, packageVersion: todos.details.provenance.canonical.packageVersion }, expected);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

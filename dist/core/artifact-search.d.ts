@@ -2,8 +2,7 @@ import type { ArtifactDescribeRequestV1, ArtifactExecutionContextV1, ArtifactExe
 import { type ArtifactCacheState, type ObservedFieldCatalog, type RefreshResult } from "./artifact-index.js";
 import { type ArtifactFieldDescription } from "./artifact-query.js";
 export declare const ARTIFACT_SEARCH_SERVICE_ID: "project-artifact-search.v1";
-export declare const ARTIFACTS_PACKAGE_NAME: "@aefree/pi-project-artifacts";
-export declare const ARTIFACTS_PACKAGE_VERSION: "0.1.0";
+export { ARTIFACTS_PACKAGE_NAME, ARTIFACTS_PACKAGE_VERSION } from "./package-identity.js";
 export type ArtifactProfileResolution = ContractResolutionV1<ArtifactProfileV1>;
 /** Canonical search composition. It never imports a provider package. */
 export declare function executeArtifactSearch(context: ArtifactExecutionContextV1, request: ArtifactSearchRequestV1, profileResolution: ArtifactProfileResolution): Promise<ArtifactSearchResultV1>;

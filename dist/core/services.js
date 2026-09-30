@@ -2,11 +2,12 @@ import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import { createArtifactProfileRegistryV1, resolveArtifactProfilesV1, } from "../contracts/v1/index.js";
 import { describeArtifactWorkspace, executeArtifactSearch, requireComposableProfiles } from "./artifact-search.js";
+import { ARTIFACTS_PACKAGE_NAME, ARTIFACTS_PACKAGE_VERSION } from "./package-identity.js";
 import { artifactExecutionBindingV1 } from "./execution-context.js";
 import { executeTodoLifecycle } from "./todo-lifecycle.js";
 const OWNER = Object.freeze({
-    packageName: "@aefree/pi-project-artifacts",
-    packageVersion: "0.1.0",
+    packageName: ARTIFACTS_PACKAGE_NAME,
+    packageVersion: ARTIFACTS_PACKAGE_VERSION,
     packageRoot: path.resolve(fileURLToPath(new URL("../..", import.meta.url))),
     registeredBy: "dist/pi/index.js",
 });

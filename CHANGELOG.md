@@ -10,6 +10,7 @@
 - Align development and deterministic validation with Pi 0.99.1.
 - Update installation guidance to 0.1.3 and document the supported runtime baseline.
 - Build automatically before packing and check the release package inventory before publication.
+- Report the installed package version consistently in service, search, field, and todo provenance.
 
 ## 0.1.2 - 2026-09-21
 

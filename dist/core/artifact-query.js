@@ -2,6 +2,7 @@ import * as path from "node:path";
 import { safeFrontmatterForDisplay } from "./artifact-index.js";
 import { ProjectArtifactError } from "./errors.js";
 import { stringValues } from "./markdown.js";
+import { ARTIFACTS_PACKAGE_NAME, ARTIFACTS_PACKAGE_VERSION } from "./package-identity.js";
 const DEFAULT_LIMIT = 20;
 const DEFAULT_SNIPPET_CHARS = 220;
 const PREPARED_LIMIT = 100;
@@ -25,7 +26,7 @@ export const BODY_PREVIEW_SEARCH_CHARS = 1_200;
 export function describeArtifactFields(profiles) {
     const generic = GENERIC_FIELDS.map((field) => Object.freeze({
         ...field, required: field.required === true, enumValues: Object.freeze([...(field.enumValues ?? [])]),
-        owner: Object.freeze({ kind: "generic", packageName: "@aefree/pi-project-artifacts", packageVersion: "0.1.0" }),
+        owner: Object.freeze({ kind: "generic", packageName: ARTIFACTS_PACKAGE_NAME, packageVersion: ARTIFACTS_PACKAGE_VERSION }),
     }));
     const profileFields = profiles.flatMap((profile) => profile.fields.map((field) => Object.freeze({
         ...field, required: field.required === true, enumValues: Object.freeze([...(field.enumValues ?? [])]),
