@@ -10,6 +10,7 @@ const DEFAULT_STALE_MS = 120_000;
 const DEFAULT_RETRY_MS = 75;
 const QUARANTINE_RENAME_RETRIES = 7;
 const MAX_QUARANTINE_BACKOFF_MS = 250;
+const LOCK_PATH_REVALIDATION_RETRIES = 7;
 
 export type FailureInjector = (point: string, details?: Readonly<Record<string, unknown>>) => void | Promise<void>;
 
@@ -282,7 +283,26 @@ async function lockPathHasExpectedOwner(lockPath: string, expected: OwnedLock): 
 }
 
 async function revalidateLockPath(physicalRoot: string | undefined, target: string, label: string): Promise<void> {
-  if (physicalRoot !== undefined) await assertPhysicalContainment(physicalRoot, target, label);
+  if (physicalRoot === undefined) return;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await assertPhysicalContainment(physicalRoot, target, label);
+      return;
+    } catch (error) {
+      // Windows realpath can report EBADF when its directory handle races a
+      // rename. Retry the entire proof, never treat that error as containment.
+      // Only the exact target may be transient: unavailable ancestors, escapes,
+      // and every other filesystem failure must still fail closed.
+      if (process.platform !== "win32"
+        || !(error instanceof ProjectArtifactError)
+        || error.code !== "path_unavailable"
+        || error.details.filesystemCode !== "EBADF"
+        || error.details.syscall !== "realpath"
+        || error.details.unresolvedPath !== normalizePath(path.resolve(target))
+        || attempt >= LOCK_PATH_REVALIDATION_RETRIES) throw error;
+      await delay(Math.min(2 ** attempt, MAX_QUARANTINE_BACKOFF_MS));
+    }
+  }
 }
 
 function isOwnedLock(value: unknown): value is OwnedLock {

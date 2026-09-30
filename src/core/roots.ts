@@ -117,7 +117,12 @@ export async function assertPhysicalContainment(physicalRoot: string, target: st
       if (error instanceof ProjectArtifactError) throw error;
       const code = typeof error === "object" && error !== null && "code" in error ? String((error as { code?: unknown }).code) : undefined;
       if (code !== "ENOENT") {
-        throw new ProjectArtifactError("path_unavailable", `${label} could not be physically resolved: ${normalizePath(absolute)}`);
+        throw new ProjectArtifactError("path_unavailable", `${label} could not be physically resolved: ${normalizePath(absolute)}`, {
+          path: normalizePath(absolute),
+          unresolvedPath: normalizePath(cursor),
+          filesystemCode: code,
+          syscall: typeof error === "object" && error !== null && "syscall" in error ? String((error as { syscall?: unknown }).syscall) : undefined,
+        });
       }
       const parent = path.dirname(cursor);
       if (parent === cursor) throw new ProjectArtifactError("path_escape", `${label} has no existing contained ancestry: ${normalizePath(absolute)}`);

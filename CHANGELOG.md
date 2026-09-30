@@ -11,6 +11,7 @@
 - Update installation guidance to 0.1.3 and document the supported runtime baseline.
 - Build automatically before packing and check the release package inventory before publication.
 - Report the installed package version consistently in service, search, field, and todo provenance.
+- Retry transient Windows lock-path `realpath` handle failures with a fresh, bounded containment proof while preserving fail-closed path and nonce ownership checks.
 
 ## 0.1.2 - 2026-09-21
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import fs, { existsSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -66,6 +67,127 @@ test("multiprocess stale-lock reclaim retries Windows rename contention without 
       const leftovers = await readdir(parent);
       assert.equal(leftovers.some((name) => name.includes(".quarantine-") || name.endsWith(".reclaim")), false, "owned quarantines and reclaim guards must be removed");
     }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+const lockOwner = (pid = process.pid, nonce = "injected-owner-nonce-0001") => ({
+  schema: "@aefree/pi-project-artifacts/lock", version: 1, pid,
+  createdAt: new Date().toISOString(), nonce,
+});
+
+async function withFilesystemInjection(method, inject, task) {
+  const original = fs.promises[method];
+  fs.promises[method] = (...args) => inject(original, ...args);
+  syncBuiltinESMExports();
+  try { return await task(); }
+  finally { fs.promises[method] = original; syncBuiltinESMExports(); }
+}
+
+function realpathFailure(target, code = "EBADF") {
+  return Object.assign(new Error(`${code}: injected realpath failure`), { code, syscall: "realpath", path: target });
+}
+
+test("Windows lock validation retries exact-target EBADF with a fresh containment proof", { skip: process.platform !== "win32" }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "pi-lock-proof-"));
+  const lockPath = path.join(root, "test.lock");
+  let failures = 0;
+  try {
+    await withFilesystemInjection("realpath", async (original, target) => {
+      if (target === lockPath && failures++ === 0) throw realpathFailure(target);
+      return original(target);
+    }, async () => {
+      const release = await acquireDirectoryLock(lockPath, lockOwner(), { physicalRoot: root });
+      await release();
+    });
+    assert.ok(failures > 1, "containment must be reproven rather than bypassed");
+    assert.equal(existsSync(lockPath), false);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("Windows retry refuses escaped replacements and preserves their nonce", { skip: process.platform !== "win32" }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "pi-lock-escape-"));
+  const outside = await mkdtemp(path.join(tmpdir(), "pi-lock-outside-"));
+  const lockPath = path.join(root, "test.lock");
+  const bytes = JSON.stringify(lockOwner());
+  try {
+    await writeFile(path.join(outside, "owner.json"), bytes);
+    let injected = false;
+    await withFilesystemInjection("realpath", async (original, target) => {
+      if (target === lockPath && !injected) {
+        injected = true;
+        await fs.promises.symlink(outside, lockPath, "junction");
+        throw realpathFailure(target);
+      }
+      return original(target);
+    }, async () => {
+      await assert.rejects(acquireDirectoryLock(lockPath, lockOwner(), { physicalRoot: root }), (error) => error.code === "path_escape");
+    });
+    assert.equal(await readFile(path.join(outside, "owner.json"), "utf8"), bytes);
+    assert.equal((await fs.promises.lstat(lockPath)).isSymbolicLink(), true);
+  } finally { await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
+});
+
+test("lock validation fails closed on persistent EBADF, other errors, and unavailable ancestry", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "pi-lock-unavailable-"));
+  const lockPath = path.join(root, "missing", "test.lock");
+  try {
+    for (const [code, failedPath] of [["EBADF", lockPath], ["EACCES", lockPath], ["EBADF", path.dirname(lockPath)]]) {
+      let failures = 0;
+      await withFilesystemInjection("realpath", async (original, target) => {
+        if (target === failedPath) { failures += 1; throw realpathFailure(target, code); }
+        return original(target);
+      }, async () => {
+        await assert.rejects(acquireDirectoryLock(lockPath, lockOwner(), { physicalRoot: root }), (error) => error.code === "path_unavailable" && error.details.filesystemCode === code);
+      });
+      assert.equal(failures, process.platform === "win32" && code === "EBADF" && failedPath === lockPath ? 8 : 1);
+      assert.equal(existsSync(path.dirname(lockPath)), false, "failed proof must precede mutation");
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("Windows stale quarantine revalidation cannot reclaim a replacement nonce after EBADF", { skip: process.platform !== "win32" }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "pi-lock-successor-"));
+  const lockPath = path.join(root, "test.lock");
+  const moved = path.join(root, "competitor-quarantine");
+  const successor = JSON.stringify(lockOwner());
+  try {
+    await mkdir(lockPath);
+    await writeFile(path.join(lockPath, "owner.json"), JSON.stringify(lockOwner(findDeadPid(), "stale-fixture-owner-nonce-0001")));
+    let observations = 0;
+    await withFilesystemInjection("realpath", async (original, target) => {
+      if (target === lockPath && ++observations === 3) {
+        // The stale owner was inspected, but another reclaimer wins before
+        // this contender's quarantine containment check finishes.
+        await fs.promises.rename(lockPath, moved);
+        await mkdir(lockPath);
+        await writeFile(path.join(lockPath, "owner.json"), successor);
+        throw realpathFailure(target);
+      }
+      return original(target);
+    }, async () => {
+      await assert.rejects(acquireDirectoryLock(lockPath, lockOwner(), { physicalRoot: root, timeoutMs: 100, retryMs: 1 }), (error) => error.code === "lock_timeout");
+    });
+    assert.equal(await readFile(path.join(lockPath, "owner.json"), "utf8"), successor);
+    assert.equal(existsSync(moved), true);
+    assert.deepEqual((await readdir(root)).sort(), ["competitor-quarantine", "test.lock"]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("quarantine must prove the renamed nonce before removing any directory", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "pi-lock-quarantine-proof-"));
+  const lockPath = path.join(root, "test.lock");
+  try {
+    const release = await acquireDirectoryLock(lockPath, lockOwner(), { physicalRoot: root });
+    let quarantine;
+    await withFilesystemInjection("rename", async (original, source, destination) => {
+      await original(source, destination);
+      quarantine = destination;
+      await writeFile(path.join(destination, "owner.json"), JSON.stringify(lockOwner(process.pid, "replacement-quarantine-nonce")));
+    }, async () => {
+      await assert.rejects(release(), (error) => error.code === "lock_quarantine_not_owned");
+    });
+    assert.equal(existsSync(quarantine), true, "unproven quarantine must not be deleted");
+    assert.equal(JSON.parse(await readFile(path.join(quarantine, "owner.json"), "utf8")).nonce, "replacement-quarantine-nonce");
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
