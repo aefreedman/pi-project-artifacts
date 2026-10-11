@@ -1,3 +1,4 @@
+import { attachObservations, newObservations } from "./operation-observations.js";
 import { artifactCacheState, buildOrRefreshIndex, observedFieldCatalog } from "./artifact-index.js";
 import { BODY_PREVIEW_SEARCH_CHARS, controlsFor, describeArtifactFields, formatArtifactResults, searchArtifactIndex, suggestedRg } from "./artifact-query.js";
 import { ARTIFACTS_PACKAGE_NAME, ARTIFACTS_PACKAGE_VERSION } from "./package-identity.js";
@@ -6,49 +7,60 @@ export const ARTIFACT_SEARCH_SERVICE_ID = "project-artifact-search.v1";
 export { ARTIFACTS_PACKAGE_NAME, ARTIFACTS_PACKAGE_VERSION } from "./package-identity.js";
 /** Canonical search composition. It never imports a provider package. */
 export async function executeArtifactSearch(context, request, profileResolution) {
-    const profiles = profileResolution.outcome === "available" ? profileResolution.records : [];
-    const refresh = await buildOrRefreshIndex(request, context, profiles);
-    // Definitions enrich per-result confidence, but never gate raw metadata matching.
-    const query = searchArtifactIndex(refresh.index, request, profiles);
-    const limit = Math.max(1, Math.min(request.limit ?? 20, 100));
-    const returned = query.results.slice(0, limit);
-    const provenance = buildProvenance(refresh.index, profiles, profileResolution);
-    const cacheState = artifactCacheState(refresh);
-    const text = formatArtifactResults(query, request, {
-        indexPath: refresh.indexPath.replaceAll("\\", "/"),
-        cacheState,
-        freshnessMode: refresh.freshnessMode,
-        stats: refresh.stats,
-        totalFiles: Object.keys(refresh.index.files).length,
-    });
-    return Object.freeze({
-        text,
-        details: Object.freeze({
-            query: boundedText(request.query),
-            scopes: request.scopes ?? ["all"],
-            filterRequest: boundedFilterRequest(request.filters),
+    const observation = newObservations();
+    observation.phase = "index_refresh";
+    observation.cacheEffects = "possible";
+    try {
+        const profiles = profileResolution.outcome === "available" ? profileResolution.records : [];
+        const refresh = await buildOrRefreshIndex(request, context, profiles);
+        observation.cacheEffects = !refresh.fastPath || refresh.refreshed || refresh.orphanTempsRemoved.length > 0 ? "observed" : "none";
+        observation.phase = "search_projection";
+        // Definitions enrich per-result confidence, but never gate raw metadata matching.
+        const query = searchArtifactIndex(refresh.index, request, profiles);
+        const limit = Math.max(1, Math.min(request.limit ?? 20, 100));
+        const returned = query.results.slice(0, limit);
+        const provenance = buildProvenance(refresh.index, profiles, profileResolution);
+        const cacheState = artifactCacheState(refresh);
+        const text = formatArtifactResults(query, request, {
             indexPath: refresh.indexPath.replaceAll("\\", "/"),
-            refreshed: refresh.refreshed,
-            fastPath: refresh.fastPath,
             cacheState,
             freshnessMode: refresh.freshnessMode,
-            refreshStats: refresh.stats,
-            rootIdentity: refresh.index.rootIdentity,
-            orphanTempsRemoved: boundedList(refresh.orphanTempsRemoved.map((entry) => entry.replaceAll("\\", "/")), 8),
-            totalIndexedFiles: Object.keys(refresh.index.files).length,
-            resultCount: query.totalMatches,
-            preparedResultCount: query.preparedMatches,
-            returnedResultCount: returned.length,
-            results: returned,
-            groupCounts: request.groupByKind ? groupCounts(returned) : undefined,
-            suggestedRg: suggestedRg(request),
-            searchCoverage: Object.freeze({ body: Object.freeze({ mode: "preview_only", indexedCharactersPerDocument: BODY_PREVIEW_SEARCH_CHARS, exhaustiveSearch: "Run suggestedRg and then read matching Markdown files directly; terms beyond the preview are not indexed." }) }),
-            filtering: Object.freeze({ exactNormalizedMatching: true, schemaOpen: true, knownProfileFieldCount: query.fieldDefinitions.length }),
-            validationDiagnostics: validationDiagnostics(refresh.index, returned.map((entry) => entry.path)),
-            controls: controlsFor(request),
-        }),
-        provenance,
-    });
+            stats: refresh.stats,
+            totalFiles: Object.keys(refresh.index.files).length,
+        });
+        return attachObservations(Object.freeze({
+            text,
+            details: Object.freeze({
+                query: boundedText(request.query),
+                scopes: request.scopes ?? ["all"],
+                filterRequest: boundedFilterRequest(request.filters),
+                indexPath: refresh.indexPath.replaceAll("\\", "/"),
+                refreshed: refresh.refreshed,
+                fastPath: refresh.fastPath,
+                cacheState,
+                freshnessMode: refresh.freshnessMode,
+                refreshStats: refresh.stats,
+                rootIdentity: refresh.index.rootIdentity,
+                orphanTempsRemoved: boundedList(refresh.orphanTempsRemoved.map((entry) => entry.replaceAll("\\", "/")), 8),
+                totalIndexedFiles: Object.keys(refresh.index.files).length,
+                resultCount: query.totalMatches,
+                preparedResultCount: query.preparedMatches,
+                returnedResultCount: returned.length,
+                results: returned,
+                groupCounts: request.groupByKind ? groupCounts(returned) : undefined,
+                suggestedRg: suggestedRg(request),
+                searchCoverage: Object.freeze({ body: Object.freeze({ mode: "preview_only", indexedCharactersPerDocument: BODY_PREVIEW_SEARCH_CHARS, exhaustiveSearch: "Run suggestedRg and then read matching Markdown files directly; terms beyond the preview are not indexed." }) }),
+                filtering: Object.freeze({ exactNormalizedMatching: true, schemaOpen: true, knownProfileFieldCount: query.fieldDefinitions.length }),
+                validationDiagnostics: validationDiagnostics(refresh.index, returned.map((entry) => entry.path)),
+                controls: controlsFor(request),
+            }),
+            provenance,
+        }), observation);
+    }
+    catch (error) {
+        attachObservations(error, observation);
+        throw error;
+    }
 }
 export function buildProvenance(index, profiles, resolution) {
     const allProfileRows = profiles.map((profile) => Object.freeze({
@@ -166,35 +178,46 @@ export function formatArtifactWorkspaceDescription(description) {
 }
 /** Canonical describe path: use the same contained, disposable index as search. */
 export async function describeArtifactWorkspace(context, request, profileResolution) {
-    const describeRequest = normalizeDescribeRequest(request);
-    const profiles = profileResolution.outcome === "available" ? profileResolution.records : [];
-    const refresh = await buildOrRefreshIndex(describeRequest, context, profiles);
-    const applied = new Set(Object.values(refresh.index.files).flatMap((entry) => entry.profileData.map((data) => `${data.profileId}\0${data.packageName}\0${data.packageVersion}`)));
-    const applicable = profiles.filter((profile) => applied.has(`${profile.id}\0${profile.owner.packageName}\0${profile.owner.packageVersion}`));
-    const profileAvailability = profiles.map((profile) => Object.freeze({
-        profileId: profile.id, packageName: profile.owner.packageName, packageVersion: profile.owner.packageVersion,
-        decision: applied.has(`${profile.id}\0${profile.owner.packageName}\0${profile.owner.packageVersion}`) ? "applied" : "not_applicable",
-    })).sort((left, right) => left.profileId.localeCompare(right.profileId));
-    return Object.freeze({
-        workspaceRoot: refresh.index.workspaceRoot,
-        fields: describeArtifactFields(applicable),
-        profileAvailability: Object.freeze(profileAvailability),
-        profileResolution: Object.freeze({ outcome: profileResolution.outcome, providerIds: profileResolution.outcome === "available" ? profiles.map((profile) => profile.id).sort() : profileResolution.providerIds }),
-        observedFieldCatalog: observedFieldCatalog(refresh.index, {
-            ...(describeRequest.fieldNames === undefined ? {} : { fieldNames: describeRequest.fieldNames }),
-            detailed: describeRequest.outputMode === "detailed",
-            includeSamples: describeRequest.includeSamples === true,
-        }),
-        outputMode: describeRequest.outputMode,
-        samplesIncluded: describeRequest.includeSamples === true,
-        ...(describeRequest.fieldNames === undefined ? {} : { focusedFieldNames: describeRequest.fieldNames }),
-        indexPath: refresh.indexPath.replaceAll("\\", "/"),
-        refreshed: refresh.refreshed,
-        fastPath: refresh.fastPath,
-        cacheState: artifactCacheState(refresh),
-        freshnessMode: refresh.freshnessMode,
-        refreshStats: refresh.stats,
-    });
+    const observation = newObservations();
+    try {
+        const describeRequest = normalizeDescribeRequest(request);
+        const profiles = profileResolution.outcome === "available" ? profileResolution.records : [];
+        observation.phase = "index_refresh";
+        observation.cacheEffects = "possible";
+        const refresh = await buildOrRefreshIndex(describeRequest, context, profiles);
+        observation.cacheEffects = !refresh.fastPath || refresh.refreshed || refresh.orphanTempsRemoved.length > 0 ? "observed" : "none";
+        observation.phase = "describe_projection";
+        const applied = new Set(Object.values(refresh.index.files).flatMap((entry) => entry.profileData.map((data) => `${data.profileId}\0${data.packageName}\0${data.packageVersion}`)));
+        const applicable = profiles.filter((profile) => applied.has(`${profile.id}\0${profile.owner.packageName}\0${profile.owner.packageVersion}`));
+        const profileAvailability = profiles.map((profile) => Object.freeze({
+            profileId: profile.id, packageName: profile.owner.packageName, packageVersion: profile.owner.packageVersion,
+            decision: applied.has(`${profile.id}\0${profile.owner.packageName}\0${profile.owner.packageVersion}`) ? "applied" : "not_applicable",
+        })).sort((left, right) => left.profileId.localeCompare(right.profileId));
+        return attachObservations(Object.freeze({
+            workspaceRoot: refresh.index.workspaceRoot,
+            fields: describeArtifactFields(applicable),
+            profileAvailability: Object.freeze(profileAvailability),
+            profileResolution: Object.freeze({ outcome: profileResolution.outcome, providerIds: profileResolution.outcome === "available" ? profiles.map((profile) => profile.id).sort() : profileResolution.providerIds }),
+            observedFieldCatalog: observedFieldCatalog(refresh.index, {
+                ...(describeRequest.fieldNames === undefined ? {} : { fieldNames: describeRequest.fieldNames }),
+                detailed: describeRequest.outputMode === "detailed",
+                includeSamples: describeRequest.includeSamples === true,
+            }),
+            outputMode: describeRequest.outputMode,
+            samplesIncluded: describeRequest.includeSamples === true,
+            ...(describeRequest.fieldNames === undefined ? {} : { focusedFieldNames: describeRequest.fieldNames }),
+            indexPath: refresh.indexPath.replaceAll("\\", "/"),
+            refreshed: refresh.refreshed,
+            fastPath: refresh.fastPath,
+            cacheState: artifactCacheState(refresh),
+            freshnessMode: refresh.freshnessMode,
+            refreshStats: refresh.stats,
+        }), observation);
+    }
+    catch (error) {
+        attachObservations(error, observation);
+        throw error;
+    }
 }
 export function requireComposableProfiles(resolution) {
     if (resolution.outcome === "duplicate") {

@@ -80,7 +80,13 @@ The lifecycle service:
 - changes transition filename/frontmatter status together while preserving body and unknown frontmatter text;
 - validates both session-cwd containment and operation-root containment before I/O and never follows todo symlink aliases.
 
-An allocation result is a preview, not a reservation. Use its `directoryHash` with `project_todo_create` when possible. Use a fresh `contentHash` with `project_todo_transition`.
+Allocation, creation, and transition run pending journal recovery under the existing lock before dispatch; even allocation or a later refusal can therefore change documents. An allocation result is a preview, not a reservation. Use its `directoryHash` with `project_todo_create` when possible. Use a fresh `contentHash` with `project_todo_transition`.
+
+## Native tool output
+
+All eight tools declare versioned closed native schemas and return validated `structuredContent`, separately from useful bounded text/JSON. Check `ok`: completed inspections/lists can contain findings, while allocation refusal and mutation conflicts are failures. Codemode receives the native DTO directly; `ctx.executeTool` receives Pi's outcome wrapper. Host validation/block failures without a DTO can reject. Effects and omissions must be checked before follow-up; failures never authorize replay.
+
+See [Native output contracts and numeric bounds](docs/2026-10-09-native-output-contracts.md). Schemas/bounds are exported from the `/pi` subpath; existing core/provider contracts remain host-independent. Native envelopes are capped at 65,536 UTF-8 bytes, presentation at 32,768 bytes, and renderer details at 65,536 bytes. Oversized results disclose omissions or fail safely rather than clipping actionable identities.
 
 ## Contracts
 

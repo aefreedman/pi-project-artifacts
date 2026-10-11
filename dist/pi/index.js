@@ -1,3 +1,6 @@
+import { nativeToolResult } from "./native-output.js";
+import { TOOL_OUTPUT_SCHEMAS_V1 } from "../contracts/v1/tool-output.js";
+export { TOOL_OUTPUT_SCHEMAS_V1, NATIVE_OUTPUT_BYTES_V1, PRESENTATION_BYTES_V1, DETAILS_BYTES_V1 } from "../contracts/v1/tool-output.js";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { keyText, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
@@ -88,7 +91,7 @@ export default function registerProjectArtifacts(pi) {
             pi.events.emit("pi-project-artifacts:services-changed", { scope: ctx.sessionManager, contractVersion: 1, action: "unregistered" });
     });
     pi.on("tool_result", (event, ctx) => { trackArtifactToolResult(event, path.resolve(ctx.cwd)); });
-    pi.registerTool({
+    registerNativeTool(pi, {
         name: "project_artifact_search",
         label: "Search Project Artifacts",
         description: "Search project-local Markdown docs, memories, and todos through the canonical disposable .pi-project-artifacts index. Body search indexes only a 1200-character preview; use returned rg/read guidance for exhaustive body search. Every parsed top-level metadata field supports exact normalized raw filtering; profiles add validation confidence only.",
@@ -105,10 +108,10 @@ export default function registerProjectArtifacts(pi) {
             onUpdate?.({ content: [{ type: "text", text: "Loading canonical project artifact index..." }], details: {} });
             const service = requireSearchService(ctx);
             const result = await service.search(executionContext(ctx, signal, toolCallId), params);
-            return { content: [{ type: "text", text: result.text }], details: { ...result.details, provenance: result.provenance } };
+            return { native: result, content: [{ type: "text", text: result.text }], details: { ...result.details, provenance: result.provenance } };
         },
     });
-    pi.registerTool({
+    registerNativeTool(pi, {
         name: "project_artifact_describe",
         label: "Describe Project Artifact Fields",
         description: "Compactly list built-in/workspace profile fields and every observed metadata name/count. Examples are opt-in, focused, bounded, and redact credentials or absolute paths.",
@@ -121,7 +124,7 @@ export default function registerProjectArtifacts(pi) {
             if (service.describe === undefined)
                 throw new ProjectArtifactError("describe_unavailable", "The canonical ArtifactSearchServiceV1 does not implement observed-metadata describe. Start a fresh session with @aefree/pi-project-artifacts.");
             const result = await service.describe(executionContext(ctx, signal, toolCallId), params);
-            return { content: [{ type: "text", text: formatArtifactWorkspaceDescription(result.details) }], details: result.details };
+            return { native: result.details, content: [{ type: "text", text: formatArtifactWorkspaceDescription(result.details) }], details: result.details };
         },
     });
     registerTodoReadTool(pi, "project_todo_validate", "Validate File Todos", "Validate every Markdown todo and report canonical filename/frontmatter conflicts without mutation.", "list", ROOT_PARAMETERS);
@@ -130,11 +133,11 @@ export default function registerProjectArtifacts(pi) {
         ...ROOT_PARAMETERS,
         path: Type.String({ description: "Todo Markdown path, absolute or workspace-relative." }),
     });
-    registerTodoReadTool(pi, "project_todo_allocate", "Allocate File Todo ID", "Read a conflict-free todos directory under lock and return its next numeric ID plus directory hash. Creation must still use project_todo_create.", "allocate_id", {
+    registerTodoReadTool(pi, "project_todo_allocate", "Allocate File Todo ID", "Observe a conflict-free todos directory under lock after journal recovery (which can change documents); return its next numeric ID plus directory hash, not a reservation. Creation must still use project_todo_create.", "allocate_id", {
         ...ROOT_PARAMETERS,
         expectedDirectoryHash: Type.Optional(Type.String({ pattern: "^sha256:[a-f0-9]{64}$" })),
     });
-    pi.registerTool({
+    registerNativeTool(pi, {
         name: "project_todo_create",
         label: "Create File Todo",
         description: "Create one canonical file todo with locked allocation, staging, exclusive target creation, hash verification, and rollback. Pre-existing conflicts block without repair.",
@@ -161,7 +164,7 @@ export default function registerProjectArtifacts(pi) {
             return todoToolResult(await requireTodoService(ctx).execute(executionContext(ctx, signal), request));
         },
     });
-    pi.registerTool({
+    registerNativeTool(pi, {
         name: "project_todo_transition",
         label: "Transition File Todo",
         description: "Atomically change a canonical todo status in both filename and frontmatter using an expected content hash, exclusive destination creation, staging, and rollback.",
@@ -186,7 +189,7 @@ export default function registerProjectArtifacts(pi) {
     });
 }
 function registerTodoReadTool(pi, name, label, description, operation, fields) {
-    pi.registerTool({
+    registerNativeTool(pi, {
         name,
         label,
         description,
@@ -214,9 +217,9 @@ function renderArtifactSearchResult(result, options, theme, context) {
 }
 function renderArtifactDescribeResult(result, options, theme, context) {
     const details = asRecord(result.details);
-    const fields = Array.isArray(details.fields) ? details.fields.length : 0;
+    const fields = numeric(details.fieldDefinitionCount) ?? (Array.isArray(details.fields) ? details.fields.length : 0);
     const observed = asRecord(details.observedFieldCatalog);
-    const observedFields = Array.isArray(observed.fields) ? observed.fields.length : 0;
+    const observedFields = details.presentationDetailsOmitted ? numeric(observed.totalFieldCount) ?? 0 : Array.isArray(observed.fields) ? observed.fields.length : 0;
     const cache = cacheStateLabel(details.cacheState);
     return expandableToolResult(result, options, theme, `${fields} field definitions · ${observedFields} observed fields${cache ? ` · ${cache}` : ""}`, "success", context);
 }
@@ -225,8 +228,8 @@ function renderTodoResult(result, options, theme, context) {
     const outcome = typeof lifecycle.outcome === "string" ? lifecycle.outcome : "completed";
     let summary;
     if (outcome === "listed") {
-        const todos = Array.isArray(lifecycle.todos) ? lifecycle.todos.length : 0;
-        const issues = Array.isArray(lifecycle.issues) ? lifecycle.issues.length : 0;
+        const todos = numeric(lifecycle.todosTotal) ?? (Array.isArray(lifecycle.todos) ? lifecycle.todos.length : 0);
+        const issues = numeric(lifecycle.issuesTotal) ?? (Array.isArray(lifecycle.issues) ? lifecycle.issues.length : 0);
         summary = `${todos} todo${todos === 1 ? "" : "s"} listed${issues ? ` · ${issues} issue${issues === 1 ? "" : "s"}` : ""}`;
     }
     else if (outcome === "inspected") {
@@ -247,6 +250,8 @@ function renderTodoResult(result, options, theme, context) {
     else {
         summary = `Todo lifecycle ${outcome}`;
     }
+    if (asRecord(result.details).presentationDetailsOmitted)
+        summary += " � details omitted";
     return expandableToolResult(result, options, theme, summary, outcome === "conflict" || outcome === "blocked" ? "warning" : "success", context);
 }
 function expandableToolResult(result, options, theme, summary, color = "success", context) {
@@ -301,4 +306,22 @@ function normalizedRootParams(ctx, params) {
     return { workspaceRoot, ...(params.todosRoot?.trim() ? { todosRoot: resolveTarget(workspaceRoot, params.todosRoot) } : {}) };
 }
 function resolveTarget(base, value) { const cleaned = value.trim().replace(/^@(?=[^@])/u, ""); return path.isAbsolute(cleaned) ? path.resolve(cleaned) : path.resolve(base, cleaned); }
-function todoToolResult(result) { const text = JSON.stringify(result, null, 2); return { content: [{ type: "text", text }], details: { result, provenance: { canonical: { serviceId: "project-file-todos.v1", packageName: ARTIFACTS_PACKAGE_NAME, packageVersion: ARTIFACTS_PACKAGE_VERSION, contractVersion: 1 } } } }; }
+function todoToolResult(result) { const text = JSON.stringify(result, null, 2); return { native: result, content: [{ type: "text", text }], details: { result, provenance: { canonical: { serviceId: "project-file-todos.v1", packageName: ARTIFACTS_PACKAGE_NAME, packageVersion: ARTIFACTS_PACKAGE_VERSION, contractVersion: 1 } } } }; }
+function registerNativeTool(pi, definition) {
+    const execute = definition.execute;
+    pi.registerTool({
+        ...definition,
+        outputSchema: TOOL_OUTPUT_SCHEMAS_V1[definition.name],
+        async execute(id, params, signal, onUpdate, ctx) {
+            const input = params;
+            const preconditions = {
+                ...(input.expectedContentHash === undefined ? {} : { expectedContentHash: input.expectedContentHash }),
+                ...(input.expectedDirectoryHash === undefined ? {} : { expectedDirectoryHash: input.expectedDirectoryHash }),
+            };
+            return await nativeToolResult(definition.name, async () => {
+                const result = await execute(id, params, signal, onUpdate, ctx);
+                return { native: result.native, text: result.content.flatMap(entry => entry.type === "text" ? [entry.text] : []).join("\n"), details: result.details };
+            }, preconditions, definition.name === "project_artifact_describe" ? { samples: input.includeSamples === true && input.outputMode === "detailed", fieldNames: Array.isArray(input.fieldNames) ? input.fieldNames : [] } : undefined);
+        },
+    });
+}

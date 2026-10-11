@@ -24,6 +24,8 @@ Other project documentation is unrestricted. Do not invent these directories, cr
 4. Use `discover_candidate_files` only for a narrow unfamiliar ownership question with multiple plausible documentation-and-code homes. It is not the default for ordinary documentation search.
 5. Read the selected files before citing, changing, or relying on them. Arbitrary Markdown remains authoritative and readable; report the paths and evidence actually read.
 
+Native calls expose bounded counts/omissions and `ok` independently of useful direct content; see [native output contracts](../../docs/2026-10-09-native-output-contracts.md) for selective consumption, errors, and effects. Do not infer absence from omitted rows or preview-only body search.
+
 ## Writing boundary
 
 Research does not authorize documentation changes. Create or update an artifact only with explicit authority, an established destination, and the applicable project or profile schema. Keep unverified hypotheses out of solutions and memories.

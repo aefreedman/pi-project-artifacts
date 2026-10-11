@@ -1,3 +1,4 @@
+import { attachObservations, newObservations, observeReference } from "./operation-observations.js";
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, readdir, realpath, rm, stat, unlink } from "node:fs/promises";
 import * as path from "node:path";
@@ -7,28 +8,49 @@ import { ProjectArtifactError, throwIfAborted } from "./errors.js";
 import { parseMarkdown, replaceTopLevelFrontmatterScalar, serializeFrontmatter } from "./markdown.js";
 import { assertPhysicalContainment, collisionKey, isPathInside, normalizePath, physicalDirectory, resolveFrom, scopedPhysicalDirectory, scopedPhysicalDirectoryOrMissing } from "./roots.js";
 export async function executeTodoLifecycle(context, request, options = {}) {
+    const observation = newObservations();
+    try {
+        const result = await executeObservedTodoLifecycle(context, request, options, observation);
+        return attachObservations(result, observation);
+    }
+    catch (error) {
+        attachObservations(error, observation);
+        throw error;
+    }
+}
+async function executeObservedTodoLifecycle(context, request, options, observation) {
     assertTodoLifecycleRequestV1(request);
     throwIfAborted(context.signal);
-    const roots = await resolveTodoRuntimeRoots(context.cwd, request.workspaceRoot, request.todosRoot, request.operation === "create");
-    if (request.operation === "inspect")
+    const roots = await resolveTodoRuntimeRoots(context.cwd, request.workspaceRoot, request.todosRoot, request.operation === "create", observation);
+    if (request.operation === "inspect") {
+        observation.phase = "inspect";
         return await inspectOperation(roots.todosRoot, path.resolve(request.path));
+    }
     if (request.operation === "list") {
+        observation.phase = "scan";
         const scan = await scanTodos(roots.todosRoot);
+        observation.directoryHash = scan.directoryHash;
         return Object.freeze({ outcome: "listed", todos: Object.freeze(scan.todos), issues: Object.freeze(scan.issues) });
     }
     const lockPath = path.join(roots.workspaceRoot, ".pi-project-artifacts", `todo-v1-${shortHash(roots.todosRoot)}.lock`);
     await assertPhysicalContainment(roots.workspaceRoot, lockPath, "todo lock path");
+    observation.phase = "lock";
+    observation.cacheEffects = "possible";
     return await withMutationQueue(roots.todosRoot, async () => await withDirectoryLock(lockPath, lockOwner(roots.todosRoot), async () => {
-        await recoverPendingTransitions(roots, context.signal);
+        observation.cacheEffects = "observed";
+        observation.phase = "recovery";
+        await recoverPendingTransitions(roots, context.signal, observation);
+        observation.phase = "scan";
         const scan = await scanTodos(roots.todosRoot);
+        observation.directoryHash = scan.directoryHash;
         if (request.operation === "allocate_id")
             return allocateOperation(request.expectedDirectoryHash, scan);
         if (request.operation === "create")
-            return await createOperation(context, request, roots, scan, options.failureInjector);
-        return await transitionOperation(context, request, roots, scan, options.failureInjector);
+            return await createOperation(context, request, roots, scan, observation, options.failureInjector);
+        return await transitionOperation(context, request, roots, scan, observation, options.failureInjector);
     }, { signal: context.signal, physicalRoot: roots.workspaceRoot }));
 }
-async function resolveTodoRuntimeRoots(executionCwd, workspaceRaw, todosRaw, createTodos) {
+async function resolveTodoRuntimeRoots(executionCwd, workspaceRaw, todosRaw, createTodos, observation) {
     const physicalExecutionRoot = await physicalDirectory(path.resolve(executionCwd));
     const lexicalWorkspace = path.resolve(workspaceRaw);
     const workspaceRoot = await scopedPhysicalDirectory(physicalExecutionRoot, lexicalWorkspace, "workspaceRoot");
@@ -36,13 +58,19 @@ async function resolveTodoRuntimeRoots(executionCwd, workspaceRaw, todosRaw, cre
     let todosRoot = await scopedPhysicalDirectoryOrMissing(physicalExecutionRoot, lexicalTodos, "todosRoot");
     try {
         todosRoot = await scopedPhysicalDirectory(physicalExecutionRoot, todosRoot, "todosRoot");
+        observation.todoRootState = "present";
     }
     catch (error) {
         if (!(error instanceof ProjectArtifactError) || error.code !== "root_missing")
             throw error;
+        observation.todoRootState = "missing";
         if (createTodos) {
             // Containment was established above before mkdir can touch the filesystem.
+            observation.documentEffects = "possible";
+            observeReference(observation, todosRoot);
             await mkdir(todosRoot, { recursive: true });
+            observation.documentEffects = "observed";
+            observation.todoRootState = "present";
             todosRoot = await scopedPhysicalDirectory(physicalExecutionRoot, todosRoot, "todosRoot");
         }
     }
@@ -67,7 +95,7 @@ function allocateOperation(expectedDirectoryHash, scan) {
     const issueId = Math.max(0, ...scan.todos.map((todo) => todo.issueId)) + 1;
     return Object.freeze({ outcome: "allocated", issueId, renderedId: renderId(issueId), directoryHash: scan.directoryHash });
 }
-async function createOperation(context, request, roots, scan, failureInjector) {
+async function createOperation(context, request, roots, scan, observation, failureInjector) {
     const blocker = preExistingConflict(scan);
     if (blocker)
         return blocker;
@@ -92,6 +120,8 @@ async function createOperation(context, request, roots, scan, failureInjector) {
     const body = normalizeTodoBody(request.todo.title, request.todo.body);
     const content = `---\n${serializeFrontmatter(metadata, ["status", "priority", "issue_id"])}\n---\n${body}`;
     return await withMutationQueue(target, async () => {
+        observation.phase = "create_stage";
+        observation.cacheEffects = "possible";
         const stageDirectory = path.join(roots.workspaceRoot, ".pi-project-artifacts", "staging");
         await assertPhysicalContainment(roots.workspaceRoot, stageDirectory, "todo staging directory");
         await mkdir(stageDirectory, { recursive: true });
@@ -101,9 +131,14 @@ async function createOperation(context, request, roots, scan, failureInjector) {
             await failureInjector?.("todo_create_before_stage", { target });
             await assertPhysicalContainment(roots.workspaceRoot, stage, "todo stage path");
             await exclusiveWrite(stage, content);
+            observation.cacheEffects = "observed";
             await failureInjector?.("todo_create_after_stage", { target, stage });
             await assertPhysicalContainment(roots.todosRoot, target, "todo target");
+            observation.phase = "create_target";
+            observeReference(observation, target);
+            observation.documentEffects = "possible";
             await exclusiveWrite(target, content);
+            observation.documentEffects = "observed";
             targetWritten = true;
             await failureInjector?.("todo_create_after_target", { target });
             const todo = await identityFromWrittenFile(target);
@@ -112,9 +147,22 @@ async function createOperation(context, request, roots, scan, failureInjector) {
         }
         catch (error) {
             if (targetWritten) {
-                const removed = await removeIfMatches(target, content);
-                if (!removed)
+                observation.rollback = "started";
+                let removed;
+                try {
+                    removed = await removeIfMatches(target, content);
+                }
+                catch (rollbackError) {
+                    observation.rollback = "failed";
+                    observation.documentEffects = "possible";
+                    throw rollbackError;
+                }
+                if (!removed) {
+                    observation.rollback = "failed";
+                    observation.documentEffects = "possible";
                     throw new ProjectArtifactError("rollback_conflict", `Create rollback refused to remove externally changed target: ${normalizePath(target)}`);
+                }
+                observation.rollback = "completed";
             }
             await unlink(stage).catch(() => undefined);
             if (hasCode(error, "EEXIST"))
@@ -123,7 +171,7 @@ async function createOperation(context, request, roots, scan, failureInjector) {
         }
     });
 }
-async function transitionOperation(context, request, roots, scan, failureInjector) {
+async function transitionOperation(context, request, roots, scan, observation, failureInjector) {
     const blocker = preExistingConflict(scan);
     if (blocker)
         return blocker;
@@ -142,6 +190,8 @@ async function transitionOperation(context, request, roots, scan, failureInjecto
         return conflict("path_collision", `Transition target collides with an existing todo: ${normalizePath(target)}`);
     const nextContent = replaceTopLevelFrontmatterScalar(originalText, "status", parsedName.status, request.toStatus);
     return await withMutationQueue(source, async () => await withMutationQueue(target, async () => {
+        observation.phase = "transition_stage";
+        observation.cacheEffects = "possible";
         const transitionRoot = transitionJournalRoot(roots.workspaceRoot);
         await assertPhysicalContainment(roots.workspaceRoot, transitionRoot, "todo transition journal root");
         await mkdir(transitionRoot, { recursive: true });
@@ -167,9 +217,15 @@ async function transitionOperation(context, request, roots, scan, failureInjecto
             await assertPhysicalContainment(roots.workspaceRoot, targetStage, "todo transition stage");
             await exclusiveWrite(targetStage, nextContent);
             await writeTransitionJournal(roots.workspaceRoot, runDirectory, journal, false);
+            observation.cacheEffects = "observed";
             await failureInjector?.("todo_transition_after_stage", { source, target, runDirectory });
             await assertPhysicalContainment(roots.todosRoot, target, "todo target");
+            observation.phase = "transition_target";
+            observation.documentEffects = "possible";
+            observeReference(observation, source);
+            observeReference(observation, target);
             await exclusiveWrite(target, nextContent);
+            observation.documentEffects = "observed";
             await chmod(target, sourceMode).catch((error) => { if (process.platform !== "win32")
                 throw error; });
             await fsyncDirectory(path.dirname(target));
@@ -180,6 +236,7 @@ async function transitionOperation(context, request, roots, scan, failureInjecto
             if (currentHash !== request.expectedContentHash)
                 throw new ProjectArtifactError("content_changed", "Todo changed immediately before source removal.");
             await assertPhysicalContainment(roots.todosRoot, source, "todo source");
+            observation.phase = "transition_source_remove";
             await unlink(source);
             await fsyncDirectory(path.dirname(source));
             journal.state = "source_removed";
@@ -190,10 +247,14 @@ async function transitionOperation(context, request, roots, scan, failureInjecto
             return Object.freeze({ outcome: "transitioned", todo, previousPath: source });
         }
         catch (error) {
+            observation.rollback = "started";
             try {
                 await rollbackTransitionRun(roots, runDirectory, journal);
+                observation.rollback = "completed";
             }
             catch (restoreError) {
+                observation.rollback = "failed";
+                observation.documentEffects = "possible";
                 throw new ProjectArtifactError("rollback_failed", `Transition rollback could not restore a hash-verified source: ${normalizePath(source)}`, { cause: restoreError instanceof Error ? restoreError.message : String(restoreError) });
             }
             if (hasCode(error, "EEXIST"))
@@ -211,7 +272,7 @@ async function writeTransitionJournal(workspaceRoot, runDirectory, journal, repl
     await assertPhysicalContainment(workspaceRoot, journalPath, "todo transition journal");
     await writeJsonAtomic(journalPath, journal, replace);
 }
-async function recoverPendingTransitions(roots, signal) {
+async function recoverPendingTransitions(roots, signal, observation) {
     const journalRoot = transitionJournalRoot(roots.workspaceRoot);
     await assertPhysicalContainment(roots.workspaceRoot, journalRoot, "todo transition journal root");
     let entries;
@@ -231,7 +292,17 @@ async function recoverPendingTransitions(roots, signal) {
         const physicalRun = await realpath(runDirectory);
         await assertPhysicalContainment(roots.workspaceRoot, physicalRun, "todo transition run directory");
         const journal = validateTransitionJournal(JSON.parse(await readFile(path.join(physicalRun, "journal.json"), "utf8")));
-        await recoverTransitionRun(roots, physicalRun, journal);
+        observation.recoveryStarted++;
+        const recovery = { source: journal.source, target: journal.target, sourceHash: journal.sourceHash, targetHash: journal.targetHash, journalState: journal.state, action: "unknown", outcome: "started" };
+        try {
+            await recoverTransitionRun(roots, physicalRun, journal, observation, recovery);
+            recovery.outcome = "completed";
+        }
+        catch (error) {
+            recovery.outcome = "failed";
+            throw error;
+        }
+        observation.recoveryCompleted++;
     }
 }
 function validateTransitionJournal(value) {
@@ -245,9 +316,12 @@ function validateTransitionJournal(value) {
     }
     return journal;
 }
-async function recoverTransitionRun(roots, runDirectory, journal) {
+async function recoverTransitionRun(roots, runDirectory, journal, observation, recovery) {
     await assertPhysicalContainment(roots.todosRoot, journal.source, "todo transition source");
     await assertPhysicalContainment(roots.todosRoot, journal.target, "todo transition target");
+    // Only contained journal identities are admitted to the public recovery seam.
+    if (observation.recoveryEntries.length < 2)
+        observation.recoveryEntries.push(recovery);
     const backup = path.join(runDirectory, "source.original");
     const stage = path.join(runDirectory, "target.next");
     await assertPhysicalContainment(roots.workspaceRoot, backup, "todo transition backup");
@@ -257,33 +331,55 @@ async function recoverTransitionRun(roots, runDirectory, journal) {
     }
     const sourceHash = await fileDigest(journal.source);
     const targetHash = await fileDigest(journal.target);
+    recovery.currentSourceHash = sourceHash ?? null;
+    recovery.currentTargetHash = targetHash ?? null;
     if (sourceHash === journal.sourceHash && targetHash === undefined) {
         // No destination was durably published: the deterministic outcome is rollback.
+        recovery.action = "removed_journal";
+        observation.cacheEffects = "possible";
         await rm(runDirectory, { recursive: true, force: true });
+        observation.cacheEffects = "observed";
         return;
     }
     if (sourceHash === journal.sourceHash && targetHash === journal.targetHash) {
         // A published destination commits the transition. Resume the remaining remove.
+        recovery.action = "removed_source";
         await assertPhysicalContainment(roots.todosRoot, journal.source, "todo transition source");
+        observation.documentEffects = "possible";
+        observeReference(observation, journal.source);
+        observeReference(observation, journal.target);
         await unlink(journal.source);
+        observation.documentEffects = "observed";
         await fsyncDirectory(path.dirname(journal.source));
+        observation.cacheEffects = "possible";
         await rm(runDirectory, { recursive: true, force: true });
+        observation.cacheEffects = "observed";
         return;
     }
     if (sourceHash === undefined && targetHash === journal.targetHash) {
+        recovery.action = "removed_journal";
+        observation.cacheEffects = "possible";
         await rm(runDirectory, { recursive: true, force: true });
+        observation.cacheEffects = "observed";
         return;
     }
     if (sourceHash === undefined && targetHash === undefined) {
+        recovery.action = "restored_source";
         const original = await readFile(backup);
         await assertPhysicalContainment(roots.todosRoot, journal.source, "todo transition source");
+        observation.documentEffects = "possible";
+        observeReference(observation, journal.source);
         await exclusiveWrite(journal.source, original);
+        observation.documentEffects = "observed";
         await chmod(journal.source, journal.sourceMode).catch((error) => { if (process.platform !== "win32")
             throw error; });
         await fsyncDirectory(path.dirname(journal.source));
+        observation.cacheEffects = "possible";
         await rm(runDirectory, { recursive: true, force: true });
+        observation.cacheEffects = "observed";
         return;
     }
+    recovery.action = "conflict";
     throw new ProjectArtifactError("transition_recovery_conflict", `Todo transition recovery refused hash-conflicting files: ${normalizePath(runDirectory)}`, { sourceHash, targetHash });
 }
 async function rollbackTransitionRun(roots, runDirectory, journal) {

@@ -25,7 +25,7 @@ The tools perform lexical contract validation plus physical root containment imm
 2. Call `project_todo_create` with typed `title`, `priority`, optional canonical `status`, Markdown `body`, optional data-only frontmatter, and the captured `expectedDirectoryHash` when available.
 3. Use the created path and content hash from the result.
 
-Creation allocates again under the root lock, stages content, creates the final target exclusively, verifies it, and rolls back owned writes on failure. The allocation preview never reserves an ID by itself.
+Creation allocates again under the root lock, stages content, creates the final target exclusively, verifies it, and rolls back owned writes on failure. The allocation preview never reserves an ID by itself. Allocation/create/transition first recover pending transition journals under the lock, so allocation or a later refusal can still change documents; inspect native effects and never automatically replay an uncertain operation.
 
 Canonical filename:
 
