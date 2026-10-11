@@ -102,6 +102,6 @@ npm test
 npm pack --dry-run
 ```
 
-Packing runs the build automatically through `prepack`; registry consumers use the prebuilt runtime and do not need the repository build/test tooling. The supported Pi baseline is 0.99.1 with Node.js >=22.19.0.
+Packing runs the build automatically through `prepack`; registry consumers use the prebuilt runtime and do not need the repository build/test tooling. The supported Pi baseline is 1.1.0 with Node.js >=22.19.0.
 
 Repository-only behavioral eval seeds live under `evals/`; they cover artifact-skill activation, safe search routing, memorize behavior, and todo behavior. They are not included in the npm package, and live model trials are opt-in rather than part of `npm test`.

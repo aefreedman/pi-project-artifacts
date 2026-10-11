@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Align development validation with Pi 1.1.0 (no package-version change).
+
 ## 0.1.3 - 2026-09-29
 
 ### Changed
