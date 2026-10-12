@@ -14,10 +14,10 @@ The package registers `ArtifactSearchServiceV1` and `TodoLifecycleServiceV1` per
 ## Installation
 
 ```bash
-pi install npm:@aefree/pi-project-artifacts@0.1.3
+pi install npm:@aefree/pi-project-artifacts@0.2.0
 ```
 
-Use `pi install -l npm:@aefree/pi-project-artifacts@0.1.3` for a project-local installation.
+Use `pi install -l npm:@aefree/pi-project-artifacts@0.2.0` for a project-local installation.
 
 `/memorize` persists one verified reusable learning as authoritative project Markdown in either the project's `solutions/` domain (verified technical problem/resolution) or `memories/` domain (verified durable non-solution knowledge). Invocation authorizes only one resolved artifact creation or focused update; evidence, duplicate detection, destination resolution, profile constraints, and post-write validation remain mandatory. It never routes output to another artifact class or claims model, session, or global user memory.
 

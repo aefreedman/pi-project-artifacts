@@ -2,11 +2,13 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-12
+
 - Add closed, versioned native output contracts to all eight artifact/todo tools, with independently bounded useful content and exact references.
 - Capture same-operation cache, journal recovery, mutation stage and rollback observations without changing service/provider result shapes; expose safe structured failures and conservative effects without replay.
 - Add deterministic offline producer/adapter and actual Pi-host consumer regressions, plus public native-output guidance.
 
-- Align development validation with Pi 1.1.0 (no package-version change).
+- Align development validation with Pi 1.1.0.
 
 ## 0.1.3 - 2026-09-29
 
