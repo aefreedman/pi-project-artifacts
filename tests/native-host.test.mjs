@@ -8,12 +8,13 @@ import { Type } from "typebox";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { createAgentSession, createCodemodeExtension, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
+const declaredPi = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).devDependencies;
 const runtimeManifest = JSON.parse(await readFile(new URL("../node_modules/@earendil-works/pi-coding-agent/package.json", import.meta.url), "utf8"));
 const contentText = event => event.result.content.filter(block => block.type === "text").map(block => block.text).join(" ");
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 
 test("actual Pi host: eight adapters, typed codemode, nested outcome, failures, hooks and event/transcript separation", { timeout: 60000 }, async () => {
-  assert.equal(runtimeManifest.version, "1.1.0");
+  assert.equal(runtimeManifest.version, declaredPi["@earendil-works/pi-coding-agent"]);
   const root = await mkdtemp(path.join(tmpdir(), "artifacts-host-"));
   let session;
   try {

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.2.1 - 2026-10-13
+
+- Refresh exact Pi development dependencies to stable 1.2.0; derive validation expectations from package.json and retain strict installed-version checks.
+
 ## 0.2.0 - 2026-10-12
 
 - Add closed, versioned native output contracts to all eight artifact/todo tools, with independently bounded useful content and exact references.
