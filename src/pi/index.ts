@@ -1,8 +1,8 @@
 import { nativeToolResult } from "./native-output.js";
 import { TOOL_OUTPUT_SCHEMAS_V1 } from "../contracts/v1/tool-output.js";
 export { TOOL_OUTPUT_SCHEMAS_V1, NATIVE_OUTPUT_BYTES_V1, PRESENTATION_BYTES_V1, DETAILS_BYTES_V1 } from "../contracts/v1/tool-output.js";
-import { StringEnum } from "@earendil-works/pi-ai";
-import { keyText, withFileMutationQueue, type AgentToolResult, type ExtensionAPI, type ExtensionContext, type ToolDefinition, type Theme, type ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
+import { StringEnum as jsonStringEnum } from "@earendil-works/pi-ai";
+import { withFileMutationQueue, type AgentToolResult, type ExtensionAPI, type ExtensionContext, type ToolDefinition, type Theme, type ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type, type TSchema } from "typebox";
 import * as path from "node:path";
@@ -24,7 +24,13 @@ import { trackArtifactToolResult } from "../core/artifact-index.js";
 import { ProjectArtifactError } from "../core/errors.js";
 import { ARTIFACTS_PACKAGE_NAME, ARTIFACTS_PACKAGE_VERSION } from "../core/package-identity.js";
 
-type ResultRenderContext = Readonly<{ isError?: boolean }>;
+type ResultRenderContext = Pick<Parameters<NonNullable<ToolDefinition["renderResult"]>>[3], "isError" | "keyText" | "keyHint">;
+
+// Raw SDK StringEnum returns pi-schema's Schema, not a TypeBox schema.
+// Retain TypeBox inference while preserving the provider-friendly JSON Schema.
+function StringEnum<T extends readonly string[]>(values: T, options?: { description?: string; default?: T[number] }) {
+  return Type.Unsafe<T[number]>(jsonStringEnum(values, options));
+}
 
 const STRING_OR_ARRAY = Type.Union([Type.String(), Type.Array(Type.String())]);
 const FILTER_VALUES = Type.Union([Type.String(), Type.Array(Type.String())]);
@@ -262,7 +268,7 @@ function renderTodoResult(result: AgentToolResult<unknown>, options: ToolRenderR
   } else {
     summary = `Todo lifecycle ${outcome}`;
   }
-  if (asRecord(result.details).presentationDetailsOmitted) summary += " � details omitted";
+  if (asRecord(result.details).presentationDetailsOmitted) summary += " · details omitted";
   return expandableToolResult(result, options, theme, summary, outcome === "conflict" || outcome === "blocked" ? "warning" : "success", context);
 }
 
@@ -276,13 +282,12 @@ function expandableToolResult(
 ): Text {
   const fullText = result.content.flatMap((entry) => entry.type === "text" ? [entry.text] : []).join("\n");
   if (options.isPartial || options.expanded) return new Text(fullText || summary, 0, 0);
-  const expandKey = keyText("app.tools.expand") || "ctrl+o";
-  const hint = `${expandKey} to expand`;
+  const hint = context?.keyText("app.tools.expand") ? ` (${context.keyHint("app.tools.expand", "to expand")})` : "";
   if (context?.isError) {
     const firstLine = (fullText.split(/\r?\n/u, 1)[0] || "Tool execution failed").slice(0, 240);
-    return new Text(`${theme.fg("error", "✗ ")}${theme.fg("muted", firstLine)} ${theme.fg("dim", `(${hint})`)}`, 0, 0);
+    return new Text(`${theme.fg("error", "✗ ")}${theme.fg("muted", firstLine)}${theme.fg("dim", hint)}`, 0, 0);
   }
-  return new Text(`${theme.fg(color, color === "success" ? "✓ " : "⚠ ")}${theme.fg("muted", summary)} ${theme.fg("dim", `(${hint})`)}`, 0, 0);
+  return new Text(`${theme.fg(color, color === "success" ? "✓ " : "⚠ ")}${theme.fg("muted", summary)}${theme.fg("dim", hint)}`, 0, 0);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

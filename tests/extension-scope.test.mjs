@@ -78,7 +78,11 @@ test("tool results stay compact until Pi's expanded view is toggled", async () =
     registerProjectArtifacts(pi);
     await pi.emit("session_start", context(scope, root));
     const theme = { fg: (_color, text) => text };
-    const render = (tool, result, expanded) => tool.renderResult(result, { expanded, isPartial: false }, theme, {}).render(240).join("\n");
+    const render = (tool, result, expanded, key = "ctrl+o", isError = false) => tool.renderResult(result, { expanded, isPartial: false }, theme, {
+      isError,
+      keyText: action => { assert.equal(action, "app.tools.expand"); return key; },
+      keyHint: (action, description) => { assert.equal(action, "app.tools.expand"); return `${key} ${description}`; },
+    }).render(240).join("\n");
 
     assert([...pi.tools.values()].every((tool) => typeof tool.renderResult === "function"));
 
@@ -109,6 +113,14 @@ test("tool results stay compact until Pi's expanded view is toggled", async () =
     assert.match(render(todoTool, todoResult, false), /1 todo listed/);
     assert.equal(render(todoTool, todoResult, false).includes("001-ready-p2-task.md"), false);
     assert.match(render(todoTool, todoResult, true), /001-ready-p2-task\.md/);
+    for (const [tool, result] of [[searchTool, searchResult], [describeTool, describeResult], [todoTool, todoResult]]) {
+      assert.match(render(tool, result, false, "alt+e"), /alt\+e to expand/);
+      assert.doesNotMatch(render(tool, result, false, "alt+e"), /ctrl\+o/);
+      assert.doesNotMatch(render(tool, result, false, ""), /to expand|ctrl\+o|\(\)/);
+      const validationError = { content: [{ type: "text", text: "Invalid arguments: priority" }], details: undefined };
+      assert.match(render(tool, validationError, false, "alt+e", true), /Invalid arguments.*alt\+e to expand/);
+      assert.doesNotMatch(render(tool, validationError, false, "", true), /to expand|ctrl\+o|\(\)/);
+    }
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

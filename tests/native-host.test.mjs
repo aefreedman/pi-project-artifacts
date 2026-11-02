@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,7 +25,7 @@ test("actual Pi host: eight adapters, typed codemode, nested outcome, failures, 
     const runtime = await ModelRuntime.create({ authPath: path.join(agentDir, "auth.json"), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false });
     const queue = [];
     let providerRequests = 0, hookMode = "none";
-    const nestedOutcomes = [], hostEvents = [];
+    const nestedOutcomes = [], hostEvents = [], admittedCalls = [];
     const provider = pi => {
       pi.registerProvider("artifact-fixture", {
         api: "artifact-scripted", apiKey: "fixture-not-a-secret", baseUrl: "http://fixture.invalid",
@@ -70,7 +70,7 @@ test("actual Pi host: eight adapters, typed codemode, nested outcome, failures, 
           return { content: [{ type: "text", text: JSON.stringify({ wrapperIsError: outcome.isError, nativeOk: native?.ok, rows: native?.completeness?.rows }) }], details: {} };
         },
       });
-      pi.on("tool_call", event => { if (hookMode === "block" && event.toolName === "project_todo_list") return { block: true, reason: "Fixture blocked" }; });
+      pi.on("tool_call", event => { admittedCalls.push(structuredClone(event)); if (hookMode === "block" && event.toolName === "project_todo_list") return { block: true, reason: "Fixture blocked" }; });
       pi.on("tool_result", event => {
         if (event.toolName === "project_todo_list" && hookMode === "drop") return { content: [{ type: "text", text: "Fixture redacted" }] };
         if (event.toolName === "project_todo_list" && hookMode === "alter") return { structuredContent: { fixtureChangedByHook: true } };
@@ -98,6 +98,31 @@ test("actual Pi host: eight adapters, typed codemode, nested outcome, failures, 
       assert(event, JSON.stringify(sdkEvents.slice(-8)));
       return event;
     }
+    const coerced = await call("project_artifact_search", { limit: "1", includeBody: "false", scopes: "docs", query: null, freshnessMode: "strict" });
+    assert.equal(coerced.isError, false);
+    const coercedInput = admittedCalls.at(-1).input;
+    assert.equal(coercedInput.limit, 1);
+    assert.equal(coercedInput.includeBody, false);
+    assert.deepEqual(coercedInput.scopes, ["docs"]);
+    assert.equal(Object.hasOwn(coercedInput, "query"), false);
+    const beforeInvalid = admittedCalls.length;
+    for (const [name, args] of [
+      ["project_todo_create", { priority: "p2", body: "Body" }],
+      ["project_todo_create", { title: "Invalid", priority: "urgent", body: "Body" }],
+      ["project_todo_create", { title: "", priority: "p2", body: "Body" }],
+      ["project_todo_create", { title: "Invalid", priority: "p2", body: "Body", expectedDirectoryHash: "bad" }],
+      ["project_todo_transition", { path: "todos/001-pending-p2-task.md", toStatus: "invalid", expectedContentHash: `sha256:${"0".repeat(64)}` }],
+      ["project_artifact_search", { limit: "101" }],
+      ["project_artifact_search", { limit: "not-a-number" }],
+      ["project_artifact_describe", { fieldNames: ["bad field"] }],
+    ]) {
+      const rejected = await call(name, args);
+      assert.equal(rejected.isError, true, `${name}: ${JSON.stringify(args)}`);
+      assert.equal(rejected.durationMs, undefined, "schema failures never execute");
+      assert.equal(rejected.result.structuredContent, undefined);
+    }
+    assert.equal(admittedCalls.length, beforeInvalid, "invalid inputs never reach tool_call/dispatch");
+    assert.deepEqual(await readdir(path.join(root, "todos")), [], "invalid mutations create no files or locks");
     const directSearch = await call("project_artifact_search", { freshnessMode: "strict" });
     assert.equal(directSearch.result.structuredContent.ok, true); assert.match(directSearch.result.content[0].text, /docs\/note.md/);
     const described = await call("project_artifact_describe"); assert.match(described.result.content[0].text, /flag \(1\)/);
