@@ -4,9 +4,14 @@
 
 ## 0.2.2 - 2026-11-02
 
-- Validate against exact Pi 1.5.0 development dependencies, including host schema coercion and rejected mutations.
-- Use injected renderer keybinding hints, honoring remapped and explicitly unbound expand actions, including validation errors.
-- Preserve TypeBox parameter inference for StringEnum schemas in raw SDK imports as well as host-loaded extensions.
+### Changed
+
+- Updated for Pi 1.5.0.
+
+### Fixed
+
+- Show the configured expand shortcut in tool results, and omit the hint when the action is unbound.
+- Fix tool-parameter typings for SDK consumers.
 
 ## 0.2.1 - 2026-10-13
 
